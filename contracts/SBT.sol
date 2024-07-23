@@ -5,8 +5,6 @@ import "@openzeppelin/contracts/utils/math/SafeMath.sol";
 import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import "@openzeppelin/contracts/utils/Address.sol";
 import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
-import "@uniswap/v3-core/contracts/interfaces/IUniswapV3Factory.sol";
-import "@uniswap/v3-core/contracts/interfaces/IUniswapV3Pool.sol";
 import "@openzeppelin/contracts/utils/Strings.sol";
 import "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
 import "@openzeppelin/contracts/utils/Address.sol";
@@ -76,9 +74,6 @@ contract SBTToken is ERC20, ReentrancyGuard {
     uint256 private LIQUIDITY_ALOCATION;
     IERC20 private TARGET_BRIDGE;
 
-    IUniswapV3Pool public pool;
-    IUniswapV3Factory public factory;
-
     mapping(bytes32 => bool) public claimedTransactions;
     mapping(bytes => bool) public usedSignatures;
     mapping(address => mapping(uint256 => uint256)) public _shares;
@@ -102,7 +97,7 @@ contract SBTToken is ERC20, ReentrancyGuard {
         _;
     }
 
-    constructor(address _factory, address _federationAddress)
+    constructor(address _federationAddress)
         ERC20("Silent Base Token", "SBT")
     {
         FEDERATION_ADDRESS = _federationAddress;
@@ -113,7 +108,6 @@ contract SBTToken is ERC20, ReentrancyGuard {
         roles[keccak256("ADMIN")][msg.sender] = true;
         emit RoleCreated(keccak256("ADMIN"), msg.sender);
         _mint(address(this), TOTAL_SUPPLY);
-        factory = IUniswapV3Factory(_factory);
     }
 
     /**
@@ -166,95 +160,6 @@ contract SBTToken is ERC20, ReentrancyGuard {
      */
     function hasRole(bytes32 role, address account) public view returns (bool) {
         return roles[role][account];
-    }
-
-    /**
-     * @dev This function allows an admin to update the Uniswap pool address.
-     *
-     * Requirements:
-     * - The caller must have the ADMIN role.
-     *
-     * @param _newAddress The new address of the Uniswap V3 Pool.
-     */
-    function setPool(IUniswapV3Pool _newAddress)
-        external
-        onlyRole(keccak256("ADMIN"))
-    {
-        pool = _newAddress;
-    }
-
-    /**
-     * @notice Creates a new Uniswap V3 pool with this contract as one of the tokens, and initializes it with the provided parameters.
-     * @dev Requires the caller to have ADMIN role.
-     * @param _tokenB The address of the second token in the pool.
-     * @param _fee The fee tier of the pool.
-     * @param _sqrtPriceX96 The initial sqrt price of the pool as a Q64.x value.
-     */
-    function createNewPool(
-        address _tokenB,
-        uint24 _fee,
-        uint160 _sqrtPriceX96
-    ) external onlyRole(keccak256("ADMIN")) {
-        address newPool = factory.createPool(address(this), _tokenB, _fee);
-        pool = IUniswapV3Pool(newPool);
-        pool.initialize(_sqrtPriceX96);
-    }
-
-    /**
-     * @notice Adds liquidity to a Uniswap V3 pool.
-     * Liquidity is added by minting tokens representing this contract's share in the pool.
-     * The range of ticks from `_tickLower` to `_tickUpper` is covered by the new liquidity.
-     *
-     * Requirements:
-     * - The caller must have admin role.
-     *
-     * @param _tickLower The lower tick of the range in which liquidity should be added.
-     * @param _tickUpper The upper tick of the range in which liquidity should be added.
-     * @param _amount The amount of liquidity to add.
-     */
-    function addLiquidity(
-        int24 _tickLower,
-        int24 _tickUpper,
-        uint128 _amount
-    ) external onlyRole(keccak256("ADMIN")) {
-        pool.mint(address(this), _tickLower, _tickUpper, _amount, "");
-    }
-
-    /**
-     * @dev Burn liquidity from Uniswap pool.
-     *
-     * Requirements:
-     * - The caller must have admin role.
-     *
-     * @param _tickLower The lower tick of the range from which liquidity should be burned.
-     * @param _tickUpper The upper tick of the range from which liquidity should be burned.
-     * @param _amount The amount of liquidity to burn.
-     */
-    function burnLiquidity(
-        int24 _tickLower,
-        int24 _tickUpper,
-        uint128 _amount
-    ) external onlyRole(keccak256("ADMIN")) {
-        pool.burn(_tickLower, _tickUpper, _amount);
-    }
-
-    /**
-     * @dev This function allows an admin to collect fees from the Uniswap pool.
-     *
-     * @param _tickLower The lower tick of the range from which fees should be collected.
-     * @param _tickUpper The upper tick of the range from which fees should be collected.
-     */
-    function collectFee(int24 _tickLower, int24 _tickUpper)
-        external
-        onlyRole(keccak256("ADMIN"))
-    {
-        pool.collect(
-            DEVELOPER_ADDRESS,
-            _tickLower,
-            _tickUpper,
-            type(uint128).max,
-            type(uint128).max
-        );
     }
 
     /**
