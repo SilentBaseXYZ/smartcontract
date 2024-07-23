@@ -264,7 +264,15 @@ contract SBTToken is ERC20, ReentrancyGuard {
         address payable to = payable(msg.sender);
         to.transfer(address(this).balance);
     }
-
+    
+    /**
+     * @notice This function allows an admin to check the request of a specific user for a certain timestamp.
+     * It returns the amount of tokens that were requested by the user at the given timestamp.
+     * @dev Requires the caller to have ADMIN role.
+     * @param user_bridge The address of the user whose requests are being checked.
+     * @param request_at The timestamp for which the request is being checked.
+     * @return uint256 The amount of tokens requested by the user at the given timestamp.
+     */
     function checkRequest(address user_bridge, uint256 request_at)
         external
         view
@@ -273,6 +281,20 @@ contract SBTToken is ERC20, ReentrancyGuard {
         return _shares[user_bridge][request_at];
     }
 
+    /*
+     * @notice This function allows a user to deposit tokens into this contract from another chain or contract.
+     * The function takes several parameters including source_contract (the address on the original chain where the tokens were minted or transferred), amount of tokens, and request_at which represents when the deposit was requested.
+     * It checks if the sender has approved this contract to move its balance, and if it does, it initiates a transfer of tokens from the source contract to this contract's address on the current chain. 
+     * The function emits an InputBridge event with details about this deposit.
+     *
+     * @dev Requires that the sender has approved the contract to move its balance.
+     *
+     * @param source_contract The address of the originating contract where tokens were minted or transferred.
+     * @param amount The total number of tokens to transfer.
+     * @param request_at A timestamp when this deposit was requested.
+     * 
+     * @return Returns true if all conditions are met, otherwise false.
+     */
     function depositToken(
         address source_contract,
         uint256 amount,
