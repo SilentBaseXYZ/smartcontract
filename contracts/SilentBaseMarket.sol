@@ -41,9 +41,18 @@ contract OrderBook {
         uint256 created_at;
     }
 
+    struct Token {
+        string symbol;
+        address token_address;
+    }
+
     address public admin;
+    
+    Token[] public listToken;
     string[] private listTicker;
     string[] private inActiveTicker;
+    mapping(string => bool) private tickerExists;
+    mapping(string => bool) private tokenExists;
     mapping(address => mapping(address => uint256)) public traderBalances;
     mapping(string => Pair) public pairs;
     mapping(string => Trade[]) public trade_data;
@@ -59,6 +68,8 @@ contract OrderBook {
         require(!_isInactive(ticker), "Ticker is inactive");
         _;
     }
+
+    event TradeExecuted(uint256 price, uint256 quantity);
 
     constructor() {
         admin = msg.sender;
@@ -112,7 +123,18 @@ contract OrderBook {
 
     
         pairs[ticker] = Pair(source_name, destination_name, token_a, token_b, block.timestamp);
-        listTicker.push(ticker);
+        if(!tickerExists[ticker]){
+            listTicker.push(ticker);
+            tickerExists[ticker] = true;
+        }
+        if(!tokenExists[source_name]){
+            listToken.push(Token(source_name, token_a));
+            tokenExists[source_name] = true;
+        }
+        if(!tokenExists[destination_name]){
+            listToken.push(Token(destination_name, token_b));
+            tokenExists[destination_name] = true;
+        }
     }
 
     function deposit(uint amount, address token_contract) external payable {
@@ -319,12 +341,6 @@ contract OrderBook {
         return trade_data[ticker][trade_data[ticker].length - 1].price;
     }
 
-
-
-    // Event for trade execution
-    event TradeExecuted(uint256 price, uint256 quantity);
-
-    // View functions to get orders
     function getBids(string memory ticker) public view returns (Order[] memory) {
         return bids[ticker];
     }
