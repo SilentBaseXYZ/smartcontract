@@ -4,6 +4,7 @@ pragma solidity ^0.8.0;
 interface IERC20 {
     event Transfer(address indexed from, address indexed to, uint256 value);
     event Approval(address indexed owner, address indexed spender, uint256 value);
+    function symbol() external view returns (string memory);
     function totalSupply() external view returns (uint256);
     function balanceOf(address account) external view returns (uint256);
     function transfer(address to, uint256 value) external returns (bool);
@@ -98,12 +99,20 @@ contract OrderBook {
         string memory destination_name;
         if(token_a == address(0)){
             source_name = "ETH";
+        } else {
+            IERC20 a = IERC20(token_a);
+            source_name = a.symbol();
         }
         if(token_b == address(0)){
             destination_name = "ETH";
+        } else {
+            IERC20 b = IERC20(token_a);
+            destination_name = b.symbol();
         }
+
     
         pairs[ticker] = Pair(source_name, destination_name, token_a, token_b, block.timestamp);
+        listTicker.push(ticker);
     }
 
     function deposit(uint amount, address token_contract) external payable {
