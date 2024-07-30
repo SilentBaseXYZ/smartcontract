@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.0;
 
+import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
+
 interface IERC20 {
     event Transfer(address indexed from, address indexed to, uint256 value);
     event Approval(address indexed owner, address indexed spender, uint256 value);
@@ -13,7 +15,7 @@ interface IERC20 {
     function transferFrom(address from, address to, uint256 value) external returns (bool);
 }
 
-contract OrderBook {
+contract OrderBook is ReentrancyGuard {
     enum Side {
         BUY,
         SELL
@@ -69,6 +71,8 @@ contract OrderBook {
         _;
     }
 
+    event OrderCreated(string ticker, uint256 price, uint256 quantity, Side side, address trader);
+    event OrderCancelled(string ticker, uint256 price, uint256 quantity, Side side, address trader);
     event TradeExecuted(uint256 price, uint256 quantity);
 
     constructor() {
@@ -150,7 +154,7 @@ contract OrderBook {
         traderBalances[msg.sender][token_contract] += amount;
     }
     
-    function withdraw(uint amount, address token_contract) external {
+    function withdraw(uint amount, address token_contract) external nonReentrant {
         require(
             traderBalances[msg.sender][token_contract] >= amount,
             'balance too low'
@@ -166,23 +170,24 @@ contract OrderBook {
     function createLimitOrder(string memory ticker, uint256 amount, uint256 price, Side side) external {
         if(side == Side.SELL) {
             addAsk(ticker, price, amount, msg.sender);
-         } else {
+        } else {
             addBid(ticker, price, amount, msg.sender);
-         }
+        }
+        emit OrderCreated(ticker, price, amount, side, msg.sender);
     }
 
     function createMarketOrder(string memory ticker, uint256 amount, Side side) external {
         uint256 readyBuyPrice;
         uint256 readySellPrice;
-         if(side == Side.SELL) {
+        if(side == Side.SELL) {
             require(bids[ticker].length > 0, "No buy orders available");
             readyBuyPrice = bids[ticker][0].price;
             addAsk(ticker, readyBuyPrice, amount, msg.sender);
-         } else {
+        } else {
             require(asks[ticker].length > 0, "No sell orders available");
             readySellPrice = asks[ticker][0].price;
             addBid(ticker, readySellPrice, amount, msg.sender);
-         }
+        }
         matchOrders(ticker);
     }
 
@@ -253,6 +258,19 @@ contract OrderBook {
         }
     }
 
+    // Cancel an order by ID (created_at)
+    function cancelOrderById(string memory ticker, Side side, uint256 orderId) external {
+        require(_isInactive(ticker) == false, "Ticker is inactive");
+        Order[] storage orders = side == Side.BUY ? bids[ticker] : asks[ticker];
+        for (uint256 i = 0; i < orders.length; i++) {
+            if (orders[i].created_at == orderId && orders[i].trader == msg.sender) {
+                emit OrderCancelled(ticker, orders[i].price, orders[i].quantity, side, msg.sender);
+                removeOrder(ticker, side, i);
+                break;
+            }
+        }
+    }
+
     // Remove bid at index
     function removeBid(string memory ticker, uint256 index) internal {
         require(index < bids[ticker].length, "Index out of bounds");
@@ -271,6 +289,17 @@ contract OrderBook {
         asks[ticker].pop();
     }
 
+    // Remove an order by index
+    function removeOrder(string memory ticker, Side side, uint index) internal {
+        if (side == Side.BUY) {
+            bids[ticker][index] = bids[ticker][bids[ticker].length - 1];
+            bids[ticker].pop();
+        } else {
+            asks[ticker][index] = asks[ticker][asks[ticker].length - 1];
+            asks[ticker].pop();
+        }
+    }
+
     // Get minimum of two values
     function min(uint256 a, uint256 b) internal pure returns (uint256) {
         return a < b ? a : b;
@@ -279,13 +308,10 @@ contract OrderBook {
     function updateTraderBalances(string memory ticker, address buyer, address seller, uint256 price, uint256 quantity) internal {
         address source_contract = pairs[ticker].source_contract;
         address destination_contract = pairs[ticker].destination_contract;
-        
         uint256 totalDestinationAmount = quantity;
         uint256 totalSourceAmount = price * quantity;
-
         traderBalances[buyer][source_contract] -= totalSourceAmount;
         traderBalances[seller][destination_contract] += totalDestinationAmount;
- 
     }
 
     function getTradeStats(string memory ticker, uint256 startTimestamp, uint256 endTimestamp) public view returns (uint256 averagePrice, uint256 totalVolume, uint256 lowPrice, uint256 highPrice) {
