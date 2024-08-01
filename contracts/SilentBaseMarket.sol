@@ -72,6 +72,28 @@ contract OrderBook is ReentrancyGuard {
         _;
     }
 
+    modifier hasSufficientBalance(string memory ticker, uint256 amount, uint256 price, Side side) {
+        address source_contract = pairs[ticker].source_contract;
+        address destination_contract = pairs[ticker].destination_contract;
+        uint256 requiredAmount;
+
+        if (side == Side.BUY) {
+            requiredAmount = price * amount;
+            require(
+                traderBalances[msg.sender][source_contract] - frozenBalances[msg.sender][source_contract] >= requiredAmount,
+                "Insufficient balance for buy order"
+            );
+        } else { // Side.SELL
+            requiredAmount = amount;
+            require(
+                traderBalances[msg.sender][destination_contract] - frozenBalances[msg.sender][destination_contract] >= requiredAmount,
+                "Insufficient balance for sell order"
+            );
+        }
+        _;
+    }
+
+
     event OrderCreated(string ticker, uint256 price, uint256 quantity, Side side, address trader);
     event OrderCancelled(string ticker, uint256 price, uint256 quantity, Side side, address trader);
     event TradeExecuted(uint256 price, uint256 quantity);
@@ -213,14 +235,14 @@ contract OrderBook is ReentrancyGuard {
     }
 
     // Add a new bid
-    function addBid(string memory ticker, uint256 price, uint256 quantity, address trader) internal requireActive(ticker) {
+    function addBid(string memory ticker, uint256 price, uint256 quantity, address trader) internal requireActive(ticker) hasSufficientBalance(ticker, quantity, price, Side.BUY) {
         bids[ticker].push(Order(price, quantity, trader, block.timestamp, 0));
         freezeBalance(ticker, price, quantity, trader, Side.BUY);
         sortBids(ticker); // Sort bids by descending price
     }
 
     // Add a new ask
-    function addAsk(string memory ticker, uint256 price, uint256 quantity, address trader) internal requireActive(ticker) {
+    function addAsk(string memory ticker, uint256 price, uint256 quantity, address trader) internal requireActive(ticker) hasSufficientBalance(ticker, quantity, price, Side.SELL) {
         asks[ticker].push(Order(price, quantity, trader, block.timestamp, 0));
         freezeBalance(ticker, price, quantity, trader, Side.SELL);
         sortAsks(ticker); // Sort asks by ascending price
