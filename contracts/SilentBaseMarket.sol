@@ -34,7 +34,6 @@ contract OrderBook is ReentrancyGuard {
         uint256 quantity;
         address trader;
         uint256 created_at;
-        uint256 updated_at;
     }
 
     struct Trade {
@@ -236,14 +235,14 @@ contract OrderBook is ReentrancyGuard {
 
     // Add a new bid
     function addBid(string memory ticker, uint256 price, uint256 quantity, address trader) internal requireActive(ticker) hasSufficientBalance(ticker, quantity, price, Side.BUY) {
-        bids[ticker].push(Order(price, quantity, trader, block.timestamp, 0));
+        bids[ticker].push(Order(price, quantity, trader, block.timestamp));
         freezeBalance(ticker, price, quantity, trader, Side.BUY);
         sortBids(ticker); // Sort bids by descending price
     }
 
     // Add a new ask
     function addAsk(string memory ticker, uint256 price, uint256 quantity, address trader) internal requireActive(ticker) hasSufficientBalance(ticker, quantity, price, Side.SELL) {
-        asks[ticker].push(Order(price, quantity, trader, block.timestamp, 0));
+        asks[ticker].push(Order(price, quantity, trader, block.timestamp));
         freezeBalance(ticker, price, quantity, trader, Side.SELL);
         sortAsks(ticker); // Sort asks by ascending price
     }
@@ -361,7 +360,9 @@ contract OrderBook is ReentrancyGuard {
         uint256 totalDestinationAmount = quantity;
         uint256 totalSourceAmount = price * quantity;
         traderBalances[buyer][source_contract] -= totalSourceAmount;
-        traderBalances[seller][destination_contract] += totalDestinationAmount;
+        traderBalances[buyer][destination_contract] += totalDestinationAmount;
+        traderBalances[buyer][source_contract] += totalSourceAmount;
+        traderBalances[seller][destination_contract] -= totalDestinationAmount;
     }
 
     function getTradeStats(string memory ticker, uint256 startTimestamp, uint256 endTimestamp) public view returns (uint256 averagePrice, uint256 totalVolume, uint256 lowPrice, uint256 highPrice) {
