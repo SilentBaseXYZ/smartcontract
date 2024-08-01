@@ -192,9 +192,9 @@ contract OrderBook is ReentrancyGuard {
 
     function createLimitOrder(string memory ticker, uint256 amount, uint256 price, Side side) external {
         if(side == Side.SELL) {
-            addAsk(ticker, price, amount, msg.sender);
+            addAsk(ticker, (price / 1 ether), amount, msg.sender);
         } else {
-            addBid(ticker, price, amount, msg.sender);
+            addBid(ticker, (price / 1 ether), amount, msg.sender);
         }
         emit OrderCreated(ticker, price, amount, side, msg.sender);
     }
