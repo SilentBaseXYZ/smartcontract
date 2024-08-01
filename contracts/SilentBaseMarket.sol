@@ -56,6 +56,7 @@ contract OrderBook is ReentrancyGuard {
     mapping(string => bool) private tickerExists;
     mapping(string => bool) private tokenExists;
     mapping(address => mapping(address => uint256)) public traderBalances;
+    mapping(address => mapping(address => uint256)) public frozenBalances;
     mapping(string => Pair) public pairs;
     mapping(string => Trade[]) public trade_data;
     mapping(string => Order[]) public bids;
@@ -191,15 +192,37 @@ contract OrderBook is ReentrancyGuard {
         matchOrders(ticker);
     }
 
+    function freezeBalance(string memory ticker, uint256 price, uint256 quantity, address trader, Side side) internal {
+        address source_contract = pairs[ticker].source_contract;
+        address destination_contract = pairs[ticker].destination_contract;
+        if(side == Side.SELL){
+            frozenBalances[trader][destination_contract] += quantity;
+        } else {
+            frozenBalances[trader][source_contract] += (price * quantity) ;
+        }
+    }
+
+    function unfreezeBalance(string memory ticker, uint256 price, uint256 quantity, address trader, Side side) internal {
+        address source_contract = pairs[ticker].source_contract;
+        address destination_contract = pairs[ticker].destination_contract;
+        if(side == Side.SELL){
+            frozenBalances[trader][destination_contract] -= quantity;
+        } else {
+            frozenBalances[trader][source_contract] -= (price * quantity);
+        }
+    }
+
     // Add a new bid
     function addBid(string memory ticker, uint256 price, uint256 quantity, address trader) internal requireActive(ticker) {
         bids[ticker].push(Order(price, quantity, trader, block.timestamp, 0));
+        freezeBalance(ticker, price, quantity, trader, Side.BUY);
         sortBids(ticker); // Sort bids by descending price
     }
 
     // Add a new ask
     function addAsk(string memory ticker, uint256 price, uint256 quantity, address trader) internal requireActive(ticker) {
         asks[ticker].push(Order(price, quantity, trader, block.timestamp, 0));
+        freezeBalance(ticker, price, quantity, trader, Side.SELL);
         sortAsks(ticker); // Sort asks by ascending price
     }
 
@@ -245,6 +268,10 @@ contract OrderBook is ReentrancyGuard {
                 // Update trader balances
                 updateTraderBalances(ticker, highestBid.trader, lowestAsk.trader, lowestAsk.price, tradeQuantity);
 
+                // Unfreeze balances
+                unfreezeBalance(ticker, lowestAsk.price, tradeQuantity, lowestAsk.trader, Side.SELL);
+                unfreezeBalance(ticker, highestBid.price, tradeQuantity, highestBid.trader, Side.BUY);
+
                 // Remove fully filled orders
                 if (highestBid.quantity == 0) {
                     removeBid(ticker, 0);
@@ -265,6 +292,7 @@ contract OrderBook is ReentrancyGuard {
         for (uint256 i = 0; i < orders.length; i++) {
             if (orders[i].created_at == orderId && orders[i].trader == msg.sender) {
                 emit OrderCancelled(ticker, orders[i].price, orders[i].quantity, side, msg.sender);
+                unfreezeBalance(ticker, orders[i].price, orders[i].quantity, msg.sender, side);
                 removeOrder(ticker, side, i);
                 break;
             }
