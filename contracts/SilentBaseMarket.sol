@@ -144,7 +144,7 @@ contract OrderBook is ReentrancyGuard {
         if(token_b == address(0)){
             destination_name = "ETH";
         } else {
-            IERC20 b = IERC20(token_a);
+            IERC20 b = IERC20(token_b);
             destination_name = b.symbol();
         }
 
