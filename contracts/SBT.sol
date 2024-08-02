@@ -1,10 +1,9 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.24;
+pragma solidity ^0.8.20;
 
-import "@openzeppelin/contracts/utils/math/SafeMath.sol";
 import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import "@openzeppelin/contracts/utils/Address.sol";
-import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
+import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 import "@openzeppelin/contracts/utils/Strings.sol";
 import "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
 import "@openzeppelin/contracts/utils/Address.sol";
@@ -65,18 +64,17 @@ contract SBTToken is ERC20, ReentrancyGuard {
     using MessageHashUtils for bytes32;
     using StringsUtil for string;
     using StringsUtil for bytes32;
-    using SafeMath for uint256;
     using Address for address payable;
 
-    address private FEDERATION_ADDRESS;
-    address private DEVELOPER_ADDRESS;
-    uint256 private TOTAL_SUPPLY;
-    uint256 private LIQUIDITY_ALOCATION;
-    IERC20 private TARGET_BRIDGE;
+    address private immutable federationAddress;
+    address private immutable developerAddress;
+    uint256 private immutable circulatingSupply;
+    uint256 private immutable liquidityAlocation;
+    IERC20 private targetBridge;
 
     mapping(bytes32 => bool) public claimedTransactions;
     mapping(bytes => bool) public usedSignatures;
-    mapping(address => mapping(uint256 => uint256)) public _shares;
+    mapping(address => mapping(uint256 => uint256)) public shares;
     mapping(bytes32 => mapping(address => bool)) private roles;
 
     event OutputBridge(
@@ -100,26 +98,27 @@ contract SBTToken is ERC20, ReentrancyGuard {
     constructor(address _federationAddress)
         ERC20("Silent Base Token", "SBT")
     {
-        FEDERATION_ADDRESS = _federationAddress;
-        DEVELOPER_ADDRESS = msg.sender;
-        TOTAL_SUPPLY = 10**9 * 10**decimals();
-        LIQUIDITY_ALOCATION = TOTAL_SUPPLY.mul(25).div(100);
+        require(_federationAddress != address(0), "Invalid address");
+        federationAddress = _federationAddress;
+        developerAddress = msg.sender;
+        circulatingSupply = 10**9 * 10**decimals();
+        liquidityAlocation = circulatingSupply * 25 / 100;
 
         roles[keccak256("ADMIN")][msg.sender] = true;
         emit RoleCreated(keccak256("ADMIN"), msg.sender);
-        _mint(address(this), TOTAL_SUPPLY);
+        _mint(address(this), circulatingSupply);
     }
 
     /**
      * @dev Mints the specified amount of tokens to the recipient address.
-     * @param _to The address of the recipient.
-     * @param _amount The amount of tokens to mint.
+     * @param to The address of the recipient.
+     * @param amount The amount of tokens to mint.
      */
-    function mint(address _to, uint256 _amount)
+    function mint(address to, uint256 amount)
         public
         onlyRole(keccak256("MINTER"))
     {
-        super._transfer(address(this), _to, _amount);
+        super._transfer(address(this), to, amount);
     }
 
     /**
@@ -165,28 +164,35 @@ contract SBTToken is ERC20, ReentrancyGuard {
     /**
      * @dev Admin allows to withdraw ether from the contract.
      */
-    function reallocationEther() public onlyRole(keccak256("ADMIN")) {
+    function reallocationEther() public onlyRole(keccak256("ADMIN")) nonReentrant {
+        uint256 contractBalance = address(this).balance;
+        require(contractBalance > 0, "No Ether to transfer");
+
         address payable to = payable(msg.sender);
-        to.transfer(address(this).balance);
+        require(to != address(0), "Invalid address");
+
+        (bool success, ) = to.call{value: contractBalance}("");
+        require(success, "Failed to send Ether");
     }
+
     
     /**
      * @notice This function allows an admin to check the request of a specific user for a certain timestamp.
      * It returns the amount of tokens that were requested by the user at the given timestamp.
      * @dev Requires the caller to have ADMIN role.
-     * @param user_bridge The address of the user whose requests are being checked.
-     * @param request_at The timestamp for which the request is being checked.
+     * @param userBridge The address of the user whose requests are being checked.
+     * @param requestAt The timestamp for which the request is being checked.
      * @return uint256 The amount of tokens requested by the user at the given timestamp.
      */
-    function checkRequest(address user_bridge, uint256 request_at)
+    function checkRequest(address userBridge, uint256 requestAt)
         external
         view
         returns (uint256)
     {
-        return _shares[user_bridge][request_at];
+        return shares[userBridge][requestAt];
     }
 
-    /*
+    /**
      * @notice This function allows a user to deposit tokens into this contract from another chain or contract.
      * The function takes several parameters including source_contract (the address on the original chain where the tokens were minted or transferred), amount of tokens, and request_at which represents when the deposit was requested.
      * It checks if the sender has approved this contract to move its balance, and if it does, it initiates a transfer of tokens from the source contract to this contract's address on the current chain. 
@@ -194,38 +200,36 @@ contract SBTToken is ERC20, ReentrancyGuard {
      *
      * @dev Requires that the sender has approved the contract to move its balance.
      *
-     * @param source_contract The address of the originating contract where tokens were minted or transferred.
+     * @param sourceContract The address of the originating contract where tokens were minted or transferred.
      * @param amount The total number of tokens to transfer.
-     * @param request_at A timestamp when this deposit was requested.
+     * @param requestAt A timestamp when this deposit was requested.
      * 
-     * @return Returns true if all conditions are met, otherwise false.
+     * @return success Returns true if all conditions are met, otherwise false.
      */
-    function depositToken(
-        address source_contract,
-        uint256 amount,
-        uint256 request_at
-    ) external returns (bool success) {
+    function depositToken(address sourceContract, uint256 amount, uint256 requestAt) external nonReentrant returns (bool success) {
         address user_bridge = msg.sender;
 
         require(
-            IERC20(source_contract).balanceOf(user_bridge) >= amount,
+            IERC20(sourceContract).balanceOf(user_bridge) >= amount,
             "Low balance"
         );
         require(
-            IERC20(source_contract).allowance(user_bridge, address(this)) >=
+            IERC20(sourceContract).allowance(user_bridge, address(this)) >=
                 amount,
             "Check token allowance"
         );
+        
+        shares[user_bridge][requestAt] = amount;
+        emit InputBridge(user_bridge, amount, requestAt);
+        // Perform the external call
         require(
-            IERC20(source_contract).transferFrom(
+            IERC20(sourceContract).transferFrom(
                 user_bridge,
                 address(this),
                 amount
             ),
             "Failed to send token to destination."
         );
-        _shares[user_bridge][request_at] = amount;
-        emit InputBridge(user_bridge, amount, request_at);
 
         return true;
     }
@@ -239,27 +243,27 @@ contract SBTToken is ERC20, ReentrancyGuard {
      *
      * @dev Requires that the sender has approved the contract to move its balance.
      *
-     * @param source_chainID The ID of the originating blockchain where tokens were originally minted or transferred.
-     * @param source_contract The address on the original chain from which the tokens were taken.
-     * @param target_contract The address on this chain to which the tokens should be sent after being claimed.
-     * @param symbol The symbol of the token being transferred (e.g., "SBT").
+     * @param sourceChainID The ID of the originating blockchain where tokens were originally minted or transferred.
+     * @param sourceContract The address on the original chain from which the tokens were taken.
+     * @param targetContract The address on this chain to which the tokens should be sent after being claimed.
+     * @param tokenSymbol The symbol of the token being transferred (e.g., "SBT").
      * @param decimal The number of decimal places for the token amount.
      * @param amount The total number of tokens to transfer.
-     * @param sign_at A timestamp when this claim was requested.
+     * @param signAt A timestamp when this claim was requested.
      * @param signature A digital signature by the federation administrator confirming that the request is valid and must be fulfilled.
      *
      * @return Returns true if all conditions are met, otherwise false.
      */
     function claimToken(
-        string memory source_chainID,
-        string memory source_contract,
-        string memory target_contract,
-        string memory symbol,
+        string memory sourceChainID,
+        string memory sourceContract,
+        string memory targetContract,
+        string memory tokenSymbol,
         string memory decimal,
         string memory amount,
-        string memory sign_at,
+        string memory signAt,
         bytes memory signature
-    ) external returns (bool) {
+    ) external nonReentrant returns (bool) {
         string memory target_chainID = Strings.toString(block.chainid);
         string memory user_bridge = Strings.toHexString(
             uint256(uint160(msg.sender)),
@@ -270,14 +274,14 @@ contract SBTToken is ERC20, ReentrancyGuard {
             .concat(
                 "BRIDGEX-",
                 user_bridge,
-                source_chainID,
+                sourceChainID,
                 target_chainID,
-                source_contract,
-                target_contract,
-                symbol,
+                sourceContract,
+                targetContract,
+                tokenSymbol, // Menggunakan 'tokenSymbol' di sini
                 decimal,
                 amount,
-                sign_at
+                signAt
             )
             .toLower();
 
@@ -289,7 +293,7 @@ contract SBTToken is ERC20, ReentrancyGuard {
             "Transaction already claimed!"
         );
         require(
-            verifySignature(transaction, FEDERATION_ADDRESS, signature),
+            verifySignature(transaction, federationAddress, signature),
             string.concat(
                 "Failed claim token: ",
                 dataPack,
@@ -299,13 +303,17 @@ contract SBTToken is ERC20, ReentrancyGuard {
             )
         );
 
-        TARGET_BRIDGE = IERC20(address(this));
-        emit OutputBridge(msg.sender, stringToUint(amount), sign_at);
-        TARGET_BRIDGE.transfer(msg.sender, stringToUint(amount));
+        // Update state before making the external call
         claimedTransactions[transaction] = true;
         usedSignatures[signature] = true;
+
+        targetBridge = IERC20(address(this));
+        emit OutputBridge(msg.sender, stringToUint(amount), signAt);
+        require(targetBridge.transfer(msg.sender, stringToUint(amount)), "Transfer failed");
+
         return true;
     }
+
 
     /**
      * @notice Verifies that a given signature is valid for a specific message, signed by an address derived from a given signer.
@@ -331,121 +339,20 @@ contract SBTToken is ERC20, ReentrancyGuard {
      * @dev Converts a string to its corresponding uint256 value.
      * The input string should represent an integer number in base 10. If any of the characters in the string do not represent valid digits (from '0' to '9'), the function will return 0.
      *
-     * @param _str The original string to be converted into a uint256 value.
-     * @return res A uint256 value that is equivalent to the input string, or 0 if the string does not represent a valid number.
+     * @param str The original string to be converted into a uint256 value.
+     * @return A uint256 value that is equivalent to the input string, or 0 if the string does not represent a valid number.
      */
-    function stringToUint(string memory _str)
-        public
-        pure
-        returns (uint256 res)
-    {
-        for (uint256 i = 0; i < bytes(_str).length; i++) {
-            if (
-                (uint8(bytes(_str)[i]) - 48) < 0 ||
-                (uint8(bytes(_str)[i]) - 48) > 9
-            ) {
-                return 0;
-            }
-            res +=
-                (uint8(bytes(_str)[i]) - 48) *
-                10**(bytes(_str).length - i - 1);
+    function stringToUint(string memory str) public pure returns (uint) {
+        bytes memory b = bytes(str);
+        uint num = 0;
+        
+        for (uint i = 0; i < b.length; i++) {
+            uint8 char = uint8(b[i]);
+            require(char >= 48 && char <= 57, "Invalid character");
+            num = num * 10 + (char - 48);
         }
-
-        return res;
-    }
-
-    /**
-     * @notice Removes the '0x' prefix from a hexadecimal string if it exists.
-     *
-     * This function checks if the input string starts with "0x" or "0X". If it does, the function will remove this prefix and return the rest of the original string as the new value. Otherwise, it simply returns the original string. The function uses case-insensitive comparison to determine whether the prefix exists.
-     *
-     * @param _hexString The input hexadecimal string from which to remove '0x' prefix.
-     *
-     * @return A new string that is a part of the original string after removing the '0x' prefix (if it exists). If the input string does not start with "0x", this will be an empty string.
-     */
-    function remove0xPrefix(string memory _hexString)
-        internal
-        pure
-        returns (string memory)
-    {
-        if (
-            bytes(_hexString).length >= 2 &&
-            bytes(_hexString)[0] == "0" &&
-            (bytes(_hexString)[1] == "x" || bytes(_hexString)[1] == "X")
-        ) {
-            return substring(_hexString, 2, bytes(_hexString).length);
-        }
-        return _hexString;
-    }
-
-    /**
-     * @notice This function returns a part of string from start index to end index.
-     *
-     * The function takes three parameters, a string and two indices (start and end). It creates a new string containing characters between the start index and the end index in the original string. If the input string is empty or if either of the indices are out of range, an empty string will be returned.
-     *
-     * @param _str The original string to extract substring from.
-     * @param _start The starting index for the substring (0-indexed).
-     * @param _end The ending index for the substring (non-inclusive, 0-indexed).
-     *
-     * @return A new string that is a part of the original string between start and end indices. If either of the input parameters are out of range or if the string is empty, an empty string will be returned.
-     */
-    function substring(
-        string memory _str,
-        uint256 _start,
-        uint256 _end
-    ) internal pure returns (string memory) {
-        bytes memory _strBytes = bytes(_str);
-        bytes memory _result = new bytes(_end - _start);
-        for (uint256 i = _start; i < _end; i++) {
-            _result[i - _start] = _strBytes[i];
-        }
-        return string(_result);
-    }
-
-    /**
-     * @notice Converts a hexadecimal string to its corresponding bytes20 value.
-     *
-     * This function takes a hexadecimal string, parses it into individual characters (each representing two digits of the original data), and converts these characters back into their uint8 representations. The results are then combined together to form a bytes20 output. If the input string is not exactly 40 characters long, or if any of the characters do not represent valid hexadecimal values, the function will revert with an error message.
-     *
-     * @param _hexString The input hexadecimal string to be converted into bytes20 format.
-     *
-     * @return A bytes20 value that is equivalent to the input hexadecimal string.
-     */
-    function parseHexStringToBytes20(string memory _hexString)
-        internal
-        pure
-        returns (bytes20)
-    {
-        bytes memory _bytesString = bytes(_hexString);
-        uint160 _parsedBytes = 0;
-        for (uint256 i = 0; i < _bytesString.length; i += 2) {
-            _parsedBytes *= 256;
-            uint8 _byteValue = parseByteToUint8(_bytesString[i]);
-            _byteValue *= 16;
-            _byteValue += parseByteToUint8(_bytesString[i + 1]);
-            _parsedBytes += _byteValue;
-        }
-        return bytes20(_parsedBytes);
-    }
-
-    /**
-     * @dev Parses an individual byte into its corresponding uint8 value.
-     * The byte can represent a number from 0-9 (ASCII values 48-57), or an uppercase letter A-F (ASCII values 65-70) or lowercase letters a-f (ASCII values 97-102).
-     * If the byte does not represent one of these characters, the function will revert with an error message.
-     *
-     * @param _byte The byte to be parsed into its uint8 value.
-     * @return The uint8 representation of the input byte.
-     */
-    function parseByteToUint8(bytes1 _byte) internal pure returns (uint8) {
-        if (uint8(_byte) >= 48 && uint8(_byte) <= 57) {
-            return uint8(_byte) - 48;
-        } else if (uint8(_byte) >= 65 && uint8(_byte) <= 70) {
-            return uint8(_byte) - 55;
-        } else if (uint8(_byte) >= 97 && uint8(_byte) <= 102) {
-            return uint8(_byte) - 87;
-        } else {
-            revert(string(abi.encodePacked("Invalid byte value: ", _byte)));
-        }
+        
+        return num;
     }
 
     fallback() external payable {}

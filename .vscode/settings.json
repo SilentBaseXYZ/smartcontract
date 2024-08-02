@@ -1,0 +1,16 @@
+{
+    "solidity.packageDefaultDependenciesDirectory": "node_modules",
+    "solidity.packageDefaultDependenciesContractsDirectory": "contracts",
+    "solidity.compileUsingLocalVersion": "/Users/qindexmedia/Documents/smartcontract/soljson-v0.8.26+commit.8a97fa7a.js",
+    "files.exclude": {
+        "**/node_modules": false
+    },
+    "search.exclude": {
+        "**/node_modules": false
+    },
+    "solidity.defaultCompiler": "localNodeModule",
+    "solidity.remappingsUnix": [
+        "@uniswap/=node_modules/@uniswap/",
+        "@openzeppelin/=node_modules/@openzeppelin/"
+   ]
+}

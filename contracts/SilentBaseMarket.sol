@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.0;
+pragma solidity ^0.8.20;
 
-import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
+import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 
 interface IERC20 {
     event Transfer(address indexed from, address indexed to, uint256 value);
@@ -47,7 +47,7 @@ contract OrderBook is ReentrancyGuard {
         address token_address;
     }
 
-    address public admin;
+    address public immutable admin;
     
     Token[] public listToken;
     string[] private listTicker;
@@ -57,7 +57,7 @@ contract OrderBook is ReentrancyGuard {
     mapping(address => mapping(address => uint256)) public traderBalances;
     mapping(address => mapping(address => uint256)) public frozenBalances;
     mapping(string => Pair) public pairs;
-    mapping(string => Trade[]) public trade_data;
+    mapping(string => Trade[]) public tradeData;
     mapping(string => Order[]) public bids;
     mapping(string => Order[]) public asks;
 
@@ -114,7 +114,8 @@ contract OrderBook is ReentrancyGuard {
     }
 
     function _isInactive(string memory ticker) internal view returns (bool) {
-        for (uint i = 0; i < inActiveTicker.length; i++) {
+        uint256 length = inActiveTicker.length;
+        for (uint i = 0; i < length; i++) {
             if (keccak256(abi.encodePacked(inActiveTicker[i])) == keccak256(abi.encodePacked(ticker))) {
                 return true;
             }
@@ -123,7 +124,8 @@ contract OrderBook is ReentrancyGuard {
     }
 
     function _getInactiveIndex(string memory ticker) internal view returns (uint) {
-        for (uint i = 0; i < inActiveTicker.length; i++) {
+        uint256 length = inActiveTicker.length;
+        for (uint i = 0; i < length; i++) {
             if (keccak256(abi.encodePacked(inActiveTicker[i])) == keccak256(abi.encodePacked(ticker))) {
                 return i;
             }
@@ -131,61 +133,58 @@ contract OrderBook is ReentrancyGuard {
         return inActiveTicker.length;
     }
 
-    function addPairs(string memory ticker, address token_a, address token_b) onlyAdmin() external {
+    function addPair(string memory ticker, address tokenA, address tokenB) onlyAdmin() external {
         string memory source_name;
         string memory destination_name;
-        if(token_a == address(0)){
+        if(tokenA == address(0)){
             source_name = "ETH";
         } else {
-            IERC20 a = IERC20(token_a);
+            IERC20 a = IERC20(tokenA);
             source_name = a.symbol();
         }
-        if(token_b == address(0)){
+        if(tokenB == address(0)){
             destination_name = "ETH";
         } else {
-            IERC20 b = IERC20(token_b);
+            IERC20 b = IERC20(tokenB);
             destination_name = b.symbol();
         }
 
     
-        pairs[ticker] = Pair(source_name, destination_name, token_a, token_b, block.timestamp);
+        pairs[ticker] = Pair(source_name, destination_name, tokenA, tokenB, block.timestamp);
         if(!tickerExists[ticker]){
             listTicker.push(ticker);
             tickerExists[ticker] = true;
         }
         if(!tokenExists[source_name]){
-            listToken.push(Token(source_name, token_a));
+            listToken.push(Token(source_name, tokenA));
             tokenExists[source_name] = true;
         }
         if(!tokenExists[destination_name]){
-            listToken.push(Token(destination_name, token_b));
+            listToken.push(Token(destination_name, tokenB));
             tokenExists[destination_name] = true;
         }
     }
 
-    function deposit(uint amount, address token_contract) external payable {
-        if(token_contract == address(0)){
-           require(msg.value == amount, "Incorrect Ether amount");
+    function deposit(uint amount, address tokenContract) external payable nonReentrant {
+        if (tokenContract == address(0)) {
+            require(msg.value == amount, "Incorrect Ether amount");
+            traderBalances[msg.sender][tokenContract] += amount;
         } else {
-            IERC20(token_contract).transferFrom(
-                msg.sender,
-                address(this),
-                amount
-            );
+            traderBalances[msg.sender][tokenContract] += amount;
+            require(IERC20(tokenContract).transferFrom(msg.sender, address(this), amount), "Transfer failed");
         }
-        traderBalances[msg.sender][token_contract] += amount;
     }
     
-    function withdraw(uint amount, address token_contract) external nonReentrant {
+    function withdraw(uint amount, address tokenContract) external nonReentrant {
         require(
-            traderBalances[msg.sender][token_contract] >= amount,
+            traderBalances[msg.sender][tokenContract] >= amount,
             'balance too low'
         ); 
-        traderBalances[msg.sender][token_contract] -= amount;
-         if(token_contract == address(0)){
-             payable(msg.sender).transfer(amount);
+        traderBalances[msg.sender][tokenContract] -= amount;
+         if(tokenContract == address(0)){
+            payable(msg.sender).transfer(amount);
         } else {
-            IERC20(token_contract).transfer(msg.sender, amount);
+            require(IERC20(tokenContract).transfer(msg.sender, amount), "Transfer failed");
         }
     }
 
@@ -280,7 +279,7 @@ contract OrderBook is ReentrancyGuard {
 
                 // Emit trade event
                 emit TradeExecuted(lowestAsk.price, tradeQuantity);
-                trade_data[ticker].push(Trade(lowestAsk.price, tradeQuantity, block.timestamp));
+                tradeData[ticker].push(Trade(lowestAsk.price, tradeQuantity, block.timestamp));
 
                 // Update quantities
                 highestBid.quantity -= tradeQuantity;
@@ -308,7 +307,7 @@ contract OrderBook is ReentrancyGuard {
 
     // Cancel an order by ID (created_at)
     function cancelOrderById(string memory ticker, Side side, uint256 orderId) external {
-        require(_isInactive(ticker) == false, "Ticker is inactive");
+        require(!_isInactive(ticker), "Ticker is inactive");
         Order[] storage orders = side == Side.BUY ? bids[ticker] : asks[ticker];
         for (uint256 i = 0; i < orders.length; i++) {
             if (orders[i].created_at == orderId && orders[i].trader == msg.sender) {
@@ -371,8 +370,8 @@ contract OrderBook is ReentrancyGuard {
         lowPrice = type(uint256).max;  // Initialize to maximum possible value
         highPrice = 0;
 
-        for (uint i = 0; i < trade_data[ticker].length; i++) {
-            Trade memory trade = trade_data[ticker][i];
+        for (uint i = 0; i < tradeData[ticker].length; i++) {
+            Trade memory trade = tradeData[ticker][i];
             if (trade.created_at >= startTimestamp && trade.created_at <= endTimestamp) {
                 sumPrice += trade.price * trade.quantity;
                 totalVolume += trade.quantity;
@@ -414,8 +413,8 @@ contract OrderBook is ReentrancyGuard {
     }
 
     function lastPrice(string memory ticker) external view requireActive(ticker) returns (uint256) {
-        require(trade_data[ticker].length > 0, "No trades found for ticker");
-        return trade_data[ticker][trade_data[ticker].length - 1].price;
+        require(tradeData[ticker].length > 0, "No trades found for ticker");
+        return tradeData[ticker][tradeData[ticker].length - 1].price;
     }
 
     function getBids(string memory ticker) public view returns (Order[] memory) {

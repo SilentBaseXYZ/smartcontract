@@ -1,0 +1,24 @@
+{
+  "name": "smartcontract",
+  "version": "1.0.0",
+  "main": "index.js",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/SilentBaseXYZ/smartcontract.git"
+  },
+  "license": "MIT",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "bugs": {
+    "url": "https://github.com/SilentBaseXYZ/smartcontract/issues"
+  },
+  "homepage": "https://github.com/SilentBaseXYZ/smartcontract#readme",
+  "description": "",
+  "dependencies": {
+    "@openzeppelin/contracts": "^5.0.2",
+    "solc": "^0.8.26"
+  }
+}
