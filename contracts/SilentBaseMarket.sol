@@ -56,7 +56,7 @@ contract OrderBook is ReentrancyGuard {
     mapping(string => bool) private tokenExists;
     mapping(address => mapping(address => uint256)) public traderBalances;
     mapping(address => mapping(address => uint256)) public frozenBalances;
-    mapping(string => Pair) public pairs;
+    mapping(string => Pair) public pairData;
     mapping(string => Trade[]) public tradeData;
     mapping(string => Order[]) public bids;
     mapping(string => Order[]) public asks;
@@ -72,8 +72,8 @@ contract OrderBook is ReentrancyGuard {
     }
 
     modifier hasSufficientBalance(string memory ticker, uint256 amount, uint256 price, Side side) {
-        address source_contract = pairs[ticker].source_contract;
-        address destination_contract = pairs[ticker].destination_contract;
+        address source_contract = pairData[ticker].source_contract;
+        address destination_contract = pairData[ticker].destination_contract;
         uint256 requiredAmount;
 
         if (side == Side.BUY) {
@@ -150,7 +150,7 @@ contract OrderBook is ReentrancyGuard {
         }
 
     
-        pairs[ticker] = Pair(source_name, destination_name, tokenA, tokenB, block.timestamp);
+        pairData[ticker] = Pair(source_name, destination_name, tokenA, tokenB, block.timestamp);
         if(!tickerExists[ticker]){
             listTicker.push(ticker);
             tickerExists[ticker] = true;
@@ -213,8 +213,8 @@ contract OrderBook is ReentrancyGuard {
     }
 
     function freezeBalance(string memory ticker, uint256 price, uint256 quantity, address trader, Side side) internal {
-        address source_contract = pairs[ticker].source_contract;
-        address destination_contract = pairs[ticker].destination_contract;
+        address source_contract = pairData[ticker].source_contract;
+        address destination_contract = pairData[ticker].destination_contract;
         if(side == Side.SELL){
             frozenBalances[trader][destination_contract] += quantity;
         } else {
@@ -223,8 +223,8 @@ contract OrderBook is ReentrancyGuard {
     }
 
     function unfreezeBalance(string memory ticker, uint256 price, uint256 quantity, address trader, Side side) internal {
-        address source_contract = pairs[ticker].source_contract;
-        address destination_contract = pairs[ticker].destination_contract;
+        address source_contract = pairData[ticker].source_contract;
+        address destination_contract = pairData[ticker].destination_contract;
         if(side == Side.SELL){
             frozenBalances[trader][destination_contract] -= quantity;
         } else {
@@ -354,8 +354,8 @@ contract OrderBook is ReentrancyGuard {
     }
 
     function updateTraderBalances(string memory ticker, address buyer, address seller, uint256 price, uint256 quantity) internal {
-        address source_contract = pairs[ticker].source_contract;
-        address destination_contract = pairs[ticker].destination_contract;
+        address source_contract = pairData[ticker].source_contract;
+        address destination_contract = pairData[ticker].destination_contract;
         uint256 totalDestinationAmount = quantity;
         uint256 totalSourceAmount = price * quantity;
         traderBalances[buyer][source_contract] -= totalSourceAmount;
@@ -427,6 +427,10 @@ contract OrderBook is ReentrancyGuard {
 
     function listTokens() external view returns (Token[] memory) {
         return tokenData;
+    }
+
+    function listPairs() external view returns (string[] memory) {
+        return listTicker;
     }
 
     receive() external payable {}
