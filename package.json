@@ -21,6 +21,7 @@
     "@openzeppelin/contracts": "^5.0.2",
     "@openzeppelin/test-helpers": "^0.5.16",
     "dotenv": "^16.4.5",
+    "ethers": "^6.13.2",
     "solc": "^0.8.26"
   }
 }
