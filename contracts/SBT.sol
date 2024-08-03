@@ -21,7 +21,7 @@ library StringsUtil {
      *
      * @return A new string with all uppercase characters in the original string replaced with their corresponding lowercase counterparts.
      */
-    function toLower(string memory str) internal pure returns (string memory) {
+    function toLowerCase(string memory str) internal pure returns (string memory) {
         bytes memory bStr = bytes(str);
         bytes memory bLower = new bytes(bStr.length);
 
@@ -45,7 +45,7 @@ library StringsUtil {
      *
      * @return A string with the hexadecimal representation of the input `bytes32` data.
      */
-    function toHexString(bytes32 data) internal pure returns (string memory) {
+    function bytes32ToHexString(bytes32 data) internal pure returns (string memory) {
         bytes memory alphabet = "0123456789abcdef";
         bytes memory str = new bytes(64);
 
@@ -55,6 +55,26 @@ library StringsUtil {
         }
 
         return string(str);
+    }
+
+    /**
+     * @dev Converts a string to its corresponding uint256 value.
+     * The input string should represent an integer number in base 10. If any of the characters in the string do not represent valid digits (from '0' to '9'), the function will return 0.
+     *
+     * @param str The original string to be converted into a uint256 value.
+     * @return A uint256 value that is equivalent to the input string, or 0 if the string does not represent a valid number.
+     */
+    function stringToUint256(string memory str) public pure returns (uint) {
+        bytes memory b = bytes(str);
+        uint num = 0;
+        
+        for (uint i = 0; i < b.length; i++) {
+            uint8 char = uint8(b[i]);
+            require(char >= 48 && char <= 57, "Invalid character");
+            num = num * 10 + (char - 48);
+        }
+        
+        return num;
     }
 }
 
@@ -110,13 +130,13 @@ contract SBTToken is ERC20, ReentrancyGuard {
     }
 
     /**
-     * @dev Mints the specified amount of tokens to the recipient address.
+     * @dev mintTokenss the specified amount of tokens to the recipient address.
      * @param to The address of the recipient.
-     * @param amount The amount of tokens to mint.
+     * @param amount The amount of tokens to mintTokens.
      */
-    function mint(address to, uint256 amount)
+    function mintTokens(address to, uint256 amount)
         public
-        onlyRole(keccak256("MINTER"))
+        onlyRole(keccak256("mintTokensER"))
     {
         super._transfer(address(this), to, amount);
     }
@@ -126,7 +146,7 @@ contract SBTToken is ERC20, ReentrancyGuard {
      * @param   role  User role type to be created.
      * @param   account  Address of the account that will be given the role.
      */
-    function createRole(bytes32 role, address account)
+    function assignRole(bytes32 role, address account)
         external
         onlyRole(keccak256("ADMIN"))
     {
@@ -142,7 +162,7 @@ contract SBTToken is ERC20, ReentrancyGuard {
      * @param   role  User role type to be removed.
      * @param   account  Account address to be removed from the role.
      */
-    function removeRole(bytes32 role, address account)
+    function revokeRole(bytes32 role, address account)
         external
         onlyRole(keccak256("ADMIN"))
     {
@@ -164,15 +184,14 @@ contract SBTToken is ERC20, ReentrancyGuard {
     /**
      * @dev Admin allows to withdraw ether from the contract.
      */
-    function reallocationEther() public onlyRole(keccak256("ADMIN")) nonReentrant {
+    function withdrawEther() public onlyRole(keccak256("ADMIN")) nonReentrant {
         uint256 contractBalance = address(this).balance;
         require(contractBalance > 0, "No Ether to transfer");
 
         address payable to = payable(msg.sender);
         require(to != address(0), "Invalid address");
 
-        (bool success, ) = to.call{value: contractBalance}("");
-        require(success, "Failed to send Ether");
+        Address.sendValue(to, contractBalance);
     }
 
     
@@ -184,7 +203,7 @@ contract SBTToken is ERC20, ReentrancyGuard {
      * @param requestAt The timestamp for which the request is being checked.
      * @return uint256 The amount of tokens requested by the user at the given timestamp.
      */
-    function checkRequest(address userBridge, uint256 requestAt)
+    function getRequestAmount(address userBridge, uint256 requestAt)
         external
         view
         returns (uint256)
@@ -194,19 +213,19 @@ contract SBTToken is ERC20, ReentrancyGuard {
 
     /**
      * @notice This function allows a user to deposit tokens into this contract from another chain or contract.
-     * The function takes several parameters including source_contract (the address on the original chain where the tokens were minted or transferred), amount of tokens, and request_at which represents when the deposit was requested.
+     * The function takes several parameters including source_contract (the address on the original chain where the tokens were mintTokensed or transferred), amount of tokens, and request_at which represents when the deposit was requested.
      * It checks if the sender has approved this contract to move its balance, and if it does, it initiates a transfer of tokens from the source contract to this contract's address on the current chain. 
      * The function emits an InputBridge event with details about this deposit.
      *
      * @dev Requires that the sender has approved the contract to move its balance.
      *
-     * @param sourceContract The address of the originating contract where tokens were minted or transferred.
+     * @param sourceContract The address of the originating contract where tokens were mintTokensed or transferred.
      * @param amount The total number of tokens to transfer.
      * @param requestAt A timestamp when this deposit was requested.
      * 
      * @return success Returns true if all conditions are met, otherwise false.
      */
-    function depositToken(address sourceContract, uint256 amount, uint256 requestAt) external nonReentrant returns (bool success) {
+    function depositTokens(address sourceContract, uint256 amount, uint256 requestAt) external nonReentrant returns (bool success) {
         address user_bridge = msg.sender;
 
         require(
@@ -243,7 +262,7 @@ contract SBTToken is ERC20, ReentrancyGuard {
      *
      * @dev Requires that the sender has approved the contract to move its balance.
      *
-     * @param sourceChainID The ID of the originating blockchain where tokens were originally minted or transferred.
+     * @param sourceChainID The ID of the originating blockchain where tokens were originally mintTokensed or transferred.
      * @param sourceContract The address on the original chain from which the tokens were taken.
      * @param targetContract The address on this chain to which the tokens should be sent after being claimed.
      * @param tokenSymbol The symbol of the token being transferred (e.g., "SBT").
@@ -254,7 +273,7 @@ contract SBTToken is ERC20, ReentrancyGuard {
      *
      * @return Returns true if all conditions are met, otherwise false.
      */
-    function claimToken(
+    function claimTokens(
         string memory sourceChainID,
         string memory sourceContract,
         string memory targetContract,
@@ -283,7 +302,7 @@ contract SBTToken is ERC20, ReentrancyGuard {
                 amount,
                 signAt
             )
-            .toLower();
+            .toLowerCase();
 
         bytes32 transaction = keccak256(abi.encodePacked(dataPack));
 
@@ -293,12 +312,12 @@ contract SBTToken is ERC20, ReentrancyGuard {
             "Transaction already claimed!"
         );
         require(
-            verifySignature(transaction, federationAddress, signature),
+            isSignatureValid(transaction, federationAddress, signature),
             string.concat(
                 "Failed claim token: ",
                 dataPack,
                 "[",
-                transaction.toHexString(),
+                transaction.bytes32ToHexString(),
                 "]"
             )
         );
@@ -308,8 +327,8 @@ contract SBTToken is ERC20, ReentrancyGuard {
         usedSignatures[signature] = true;
 
         targetBridge = IERC20(address(this));
-        emit OutputBridge(msg.sender, stringToUint(amount), signAt);
-        require(targetBridge.transfer(msg.sender, stringToUint(amount)), "Transfer failed");
+        emit OutputBridge(msg.sender, amount.stringToUint256(), signAt);
+        require(targetBridge.transfer(msg.sender, amount.stringToUint256()), "Transfer failed");
 
         return true;
     }
@@ -325,7 +344,7 @@ contract SBTToken is ERC20, ReentrancyGuard {
      *
      * @return bool Returns true if the recovered address matches the expected signer and the signature is valid for the given message, otherwise it returns false.
      */
-    function verifySignature(
+    function isSignatureValid(
         bytes32 message,
         address signer,
         bytes memory signature
@@ -335,25 +354,7 @@ contract SBTToken is ERC20, ReentrancyGuard {
         return signer == recoveredSigner;
     }
 
-    /**
-     * @dev Converts a string to its corresponding uint256 value.
-     * The input string should represent an integer number in base 10. If any of the characters in the string do not represent valid digits (from '0' to '9'), the function will return 0.
-     *
-     * @param str The original string to be converted into a uint256 value.
-     * @return A uint256 value that is equivalent to the input string, or 0 if the string does not represent a valid number.
-     */
-    function stringToUint(string memory str) public pure returns (uint) {
-        bytes memory b = bytes(str);
-        uint num = 0;
-        
-        for (uint i = 0; i < b.length; i++) {
-            uint8 char = uint8(b[i]);
-            require(char >= 48 && char <= 57, "Invalid character");
-            num = num * 10 + (char - 48);
-        }
-        
-        return num;
-    }
+    
 
     fallback() external payable {}
 
