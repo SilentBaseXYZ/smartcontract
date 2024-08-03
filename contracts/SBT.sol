@@ -136,7 +136,7 @@ contract SBTToken is ERC20, ReentrancyGuard {
      */
     function mintTokens(address to, uint256 amount)
         public
-        onlyRole(keccak256("mintTokensER"))
+        onlyRole(keccak256("MINTER"))
     {
         super._transfer(address(this), to, amount);
     }
