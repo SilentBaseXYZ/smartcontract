@@ -1,4 +1,4 @@
-const SBTToken = artifacts.require("SBTToken");
+const SBTToken = artifacts.require("SBToken");
 require('dotenv').config();
 
 module.exports = function (deployer) {

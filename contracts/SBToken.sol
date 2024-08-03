@@ -78,7 +78,7 @@ library StringsUtil {
     }
 }
 
-contract SBTToken is ERC20, ReentrancyGuard {
+contract SBToken is ERC20, ReentrancyGuard {
     using ECDSA for bytes32;
     using Address for address;
     using MessageHashUtils for bytes32;

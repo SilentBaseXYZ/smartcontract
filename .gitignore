@@ -3,3 +3,5 @@ package-lock.json
 *.local
 bin/*
 .env
+build/*
+*.json

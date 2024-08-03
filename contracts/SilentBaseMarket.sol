@@ -49,7 +49,7 @@ contract OrderBook is ReentrancyGuard {
 
     address public immutable admin;
     
-    Token[] public listToken;
+    Token[] public tokenData;
     string[] private listTicker;
     string[] private inActiveTicker;
     mapping(string => bool) private tickerExists;
@@ -156,11 +156,11 @@ contract OrderBook is ReentrancyGuard {
             tickerExists[ticker] = true;
         }
         if(!tokenExists[source_name]){
-            listToken.push(Token(source_name, tokenA));
+            tokenData.push(Token(source_name, tokenA));
             tokenExists[source_name] = true;
         }
         if(!tokenExists[destination_name]){
-            listToken.push(Token(destination_name, tokenB));
+            tokenData.push(Token(destination_name, tokenB));
             tokenExists[destination_name] = true;
         }
     }
@@ -423,6 +423,10 @@ contract OrderBook is ReentrancyGuard {
 
     function getAsks(string memory ticker) public view returns (Order[] memory) {
         return asks[ticker];
+    }
+
+    function listTokens() external view returns (Token[] memory) {
+        return tokenData;
     }
 
     receive() external payable {}

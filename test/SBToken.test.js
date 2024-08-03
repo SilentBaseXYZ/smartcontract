@@ -1,13 +1,13 @@
-const SBTToken = artifacts.require("SBTToken");
+const SBToken = artifacts.require("SBToken");
 const { expectRevert, expectEvent } = require('@openzeppelin/test-helpers');
 
-contract("SBTToken", accounts => {
+contract("SBToken", accounts => {
   const [admin, user, other] = accounts;
   let token;
 
   beforeEach(async () => {
     const federationAddress = admin;
-    token = await SBTToken.new(federationAddress);
+    token = await SBToken.new(federationAddress);
   });
 
   it("should deploy the contract and check initial values", async () => {
