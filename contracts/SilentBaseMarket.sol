@@ -2,6 +2,7 @@
 pragma solidity ^0.8.20;
 
 import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
+import "./lib/ABDKMath64x64.sol";
 
 interface IERC20 {
     event Transfer(address indexed from, address indexed to, uint256 value);
@@ -16,6 +17,8 @@ interface IERC20 {
 }
 
 contract OrderBook is ReentrancyGuard {
+    using ABDKMath64x64 for int128;
+
     enum Side {
         BUY,
         SELL
@@ -77,12 +80,13 @@ contract OrderBook is ReentrancyGuard {
         uint256 requiredAmount;
 
         if (side == Side.BUY) {
-            requiredAmount = price * amount;
+            int128 price64x64 = ABDKMath64x64.fromUInt(price);
+            requiredAmount = ABDKMath64x64.mulu(price64x64, amount);
             require(
                 traderBalances[msg.sender][source_contract] - frozenBalances[msg.sender][source_contract] >= requiredAmount,
                 "Insufficient balance for buy order"
             );
-        } else { // Side.SELL
+        } else { 
             requiredAmount = amount;
             require(
                 traderBalances[msg.sender][destination_contract] - frozenBalances[msg.sender][destination_contract] >= requiredAmount,
@@ -190,9 +194,9 @@ contract OrderBook is ReentrancyGuard {
 
     function createLimitOrder(string memory ticker, uint256 amount, uint256 price, Side side) external {
         if(side == Side.SELL) {
-            addAsk(ticker, (price / 1 ether), amount, msg.sender);
+            addAsk(ticker, price, amount, msg.sender);
         } else {
-            addBid(ticker, (price / 1 ether), amount, msg.sender);
+            addBid(ticker, price, amount, msg.sender);
         }
         emit OrderCreated(ticker, price, amount, side, msg.sender);
     }
@@ -218,7 +222,9 @@ contract OrderBook is ReentrancyGuard {
         if(side == Side.SELL){
             frozenBalances[trader][destination_contract] += quantity;
         } else {
-            frozenBalances[trader][source_contract] += (price * quantity) ;
+            int128 price64x64 = ABDKMath64x64.fromUInt(price);
+            uint256 totalCost = ABDKMath64x64.mulu(price64x64, quantity);
+            frozenBalances[trader][source_contract] += totalCost;
         }
     }
 
@@ -228,7 +234,9 @@ contract OrderBook is ReentrancyGuard {
         if(side == Side.SELL){
             frozenBalances[trader][destination_contract] -= quantity;
         } else {
-            frozenBalances[trader][source_contract] -= (price * quantity);
+            int128 price64x64 = ABDKMath64x64.fromUInt(price);
+            uint256 totalCost = ABDKMath64x64.mulu(price64x64, quantity);
+            frozenBalances[trader][source_contract] -= totalCost;
         }
     }
 
@@ -357,7 +365,8 @@ contract OrderBook is ReentrancyGuard {
         address source_contract = pairData[ticker].source_contract;
         address destination_contract = pairData[ticker].destination_contract;
         uint256 totalDestinationAmount = quantity;
-        uint256 totalSourceAmount = price * quantity;
+        int128 price64x64 = ABDKMath64x64.fromUInt(price);
+        uint256 totalSourceAmount = ABDKMath64x64.mulu(price64x64, quantity);
         traderBalances[buyer][source_contract] -= totalSourceAmount;
         traderBalances[buyer][destination_contract] += totalDestinationAmount;
         traderBalances[buyer][source_contract] += totalSourceAmount;
@@ -367,13 +376,13 @@ contract OrderBook is ReentrancyGuard {
     function getTradeStats(string memory ticker, uint256 startTimestamp, uint256 endTimestamp) public view returns (uint256 averagePrice, uint256 totalVolume, uint256 lowPrice, uint256 highPrice) {
         uint256 sumPrice = 0;
         uint256 count = 0;
-        lowPrice = type(uint256).max;  // Initialize to maximum possible value
+        lowPrice = type(uint256).max;
         highPrice = 0;
 
         for (uint i = 0; i < tradeData[ticker].length; i++) {
             Trade memory trade = tradeData[ticker][i];
             if (trade.created_at >= startTimestamp && trade.created_at <= endTimestamp) {
-                sumPrice += trade.price * trade.quantity;
+                sumPrice +=  ABDKMath64x64.mulu(ABDKMath64x64.fromUInt(trade.price), trade.quantity);
                 totalVolume += trade.quantity;
                 if (trade.price < lowPrice) {
                     lowPrice = trade.price;
