@@ -80,8 +80,8 @@ contract OrderBook is ReentrancyGuard {
         uint256 requiredAmount;
 
         if (side == Side.BUY) {
-            int128 price64x64 = ABDKMath64x64.fromUInt(price);
-            requiredAmount = ABDKMath64x64.mulu(price64x64, amount);
+            int128 price64x64 = ABDKMath64x64.fromUInt(price / 1 ether);
+            requiredAmount = ABDKMath64x64.mulu(price64x64, (amount / 1 ether)) * 1 ether;
             require(
                 traderBalances[msg.sender][source_contract] - frozenBalances[msg.sender][source_contract] >= requiredAmount,
                 "Insufficient balance for buy order"
@@ -220,11 +220,11 @@ contract OrderBook is ReentrancyGuard {
         address source_contract = pairData[ticker].source_contract;
         address destination_contract = pairData[ticker].destination_contract;
         if(side == Side.SELL){
-            frozenBalances[trader][destination_contract] += quantity;
+            frozenBalances[trader][source_contract] += quantity;
         } else {
-            int128 price64x64 = ABDKMath64x64.fromUInt(price);
-            uint256 totalCost = ABDKMath64x64.mulu(price64x64, quantity);
-            frozenBalances[trader][source_contract] += totalCost;
+            int128 price64x64 = ABDKMath64x64.fromUInt(price / 1 ether);
+            uint256 totalCost = ABDKMath64x64.mulu(price64x64, (quantity / 1 ether)) * 1 ether;
+            frozenBalances[trader][destination_contract] += totalCost;
         }
     }
 
@@ -232,11 +232,11 @@ contract OrderBook is ReentrancyGuard {
         address source_contract = pairData[ticker].source_contract;
         address destination_contract = pairData[ticker].destination_contract;
         if(side == Side.SELL){
-            frozenBalances[trader][destination_contract] -= quantity;
+            frozenBalances[trader][source_contract] -= quantity;
         } else {
-            int128 price64x64 = ABDKMath64x64.fromUInt(price);
-            uint256 totalCost = ABDKMath64x64.mulu(price64x64, quantity);
-            frozenBalances[trader][source_contract] -= totalCost;
+            int128 price64x64 = ABDKMath64x64.fromUInt(price / 1 ether);
+            uint256 totalCost = ABDKMath64x64.mulu(price64x64, (quantity / 1 ether)) * 1 ether;
+            frozenBalances[trader][destination_contract] -= totalCost;
         }
     }
 
@@ -365,8 +365,8 @@ contract OrderBook is ReentrancyGuard {
         address source_contract = pairData[ticker].source_contract;
         address destination_contract = pairData[ticker].destination_contract;
         uint256 totalDestinationAmount = quantity;
-        int128 price64x64 = ABDKMath64x64.fromUInt(price);
-        uint256 totalSourceAmount = ABDKMath64x64.mulu(price64x64, quantity);
+        int128 price64x64 = ABDKMath64x64.fromUInt(price / 1 ether);
+        uint256 totalSourceAmount = ABDKMath64x64.mulu(price64x64, (quantity / 1 ether)) * 1 ether;
         traderBalances[buyer][source_contract] -= totalSourceAmount;
         traderBalances[buyer][destination_contract] += totalDestinationAmount;
         traderBalances[buyer][source_contract] += totalSourceAmount;
@@ -382,7 +382,7 @@ contract OrderBook is ReentrancyGuard {
         for (uint i = 0; i < tradeData[ticker].length; i++) {
             Trade memory trade = tradeData[ticker][i];
             if (trade.created_at >= startTimestamp && trade.created_at <= endTimestamp) {
-                sumPrice +=  ABDKMath64x64.mulu(ABDKMath64x64.fromUInt(trade.price), trade.quantity);
+                sumPrice +=  ABDKMath64x64.mulu(ABDKMath64x64.fromUInt(trade.price / 1 ether), (trade.quantity / 1 ether)) * 1 ether;
                 totalVolume += trade.quantity;
                 if (trade.price < lowPrice) {
                     lowPrice = trade.price;
