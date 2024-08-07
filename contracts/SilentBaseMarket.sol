@@ -121,7 +121,7 @@ contract OrderBook is ReentrancyGuard {
     function removeFromInactive(string memory ticker) public onlyAdmin() {
         uint256 index = _getInactiveIndex(ticker);
         require(index < inActiveTicker.length, "Ticker not found in inactive list");
-        inActiveTicker[index] = inActiveTicker[inActiveTicker.length - 1];
+        inActiveTicker[index] = inActiveTicker[inActiveTicker.length.sub(1)];
         inActiveTicker.pop();
     }
 
@@ -184,7 +184,7 @@ contract OrderBook is ReentrancyGuard {
             traderBalances[msg.sender][tokenContract] = tokenBalance.add(amount);
             frozenBalances[msg.sender][tokenContract] = frozenBalance.add(0);
         } else {
-            traderBalances[msg.sender][tokenContract] += tokenBalance.add(amount);
+            traderBalances[msg.sender][tokenContract] = tokenBalance.add(amount);
             frozenBalances[msg.sender][tokenContract] = frozenBalance.add(0);
             require(IERC20(tokenContract).transferFrom(msg.sender, address(this), amount), "Transfer failed");
         }
@@ -274,7 +274,7 @@ contract OrderBook is ReentrancyGuard {
     // Sort bids in descending order
     function sortBids(string memory ticker) internal {
         for (uint256 i = 0; i < bids[ticker].length; i++) {
-            for (uint256 j = i + 1; j < bids[ticker].length; j++) {
+            for (uint256 j = i.add(1); j < bids[ticker].length; j++) {
                 if (bids[ticker][i].price < bids[ticker][j].price) {
                     (bids[ticker][i], bids[ticker][j]) = (bids[ticker][j], bids[ticker][i]);
                 }
@@ -285,7 +285,7 @@ contract OrderBook is ReentrancyGuard {
     // Sort asks in ascending order
     function sortAsks(string memory ticker) internal {
         for (uint256 i = 0; i < asks[ticker].length; i++) {
-            for (uint256 j = i + 1; j < asks[ticker].length; j++) {
+            for (uint256 j = i.add(1); j < asks[ticker].length; j++) {
                 if (asks[ticker][i].price > asks[ticker][j].price) {
                     (asks[ticker][i], asks[ticker][j]) = (asks[ticker][j], asks[ticker][i]);
                 }
@@ -347,8 +347,8 @@ contract OrderBook is ReentrancyGuard {
     // Remove bid at index
     function removeBid(string memory ticker, uint256 index) internal {
         require(index < bids[ticker].length, "Index out of bounds");
-        for (uint256 i = index; i < bids[ticker].length - 1; i++) {
-            bids[ticker][i] = bids[ticker][i + 1];
+        for (uint256 i = index; i < bids[ticker].length.sub(1); i++) {
+            bids[ticker][i] = bids[ticker][i.add(1)];
         }
         bids[ticker].pop();
     }
@@ -356,8 +356,8 @@ contract OrderBook is ReentrancyGuard {
     // Remove ask at index
     function removeAsk(string memory ticker, uint256 index) internal {
         require(index < asks[ticker].length, "Index out of bounds");
-        for (uint256 i = index; i < asks[ticker].length - 1; i++) {
-            asks[ticker][i] = asks[ticker][i + 1];
+        for (uint256 i = index; i < asks[ticker].length.sub(1); i++) {
+            asks[ticker][i] = asks[ticker][i.add(1)];
         }
         asks[ticker].pop();
     }
@@ -365,10 +365,10 @@ contract OrderBook is ReentrancyGuard {
     // Remove an order by index
     function removeOrder(string memory ticker, Side side, uint256 index) internal {
         if (side == Side.BUY) {
-            bids[ticker][index] = bids[ticker][bids[ticker].length - 1];
+            bids[ticker][index] = bids[ticker][bids[ticker].length.sub(1)];
             bids[ticker].pop();
         } else {
-            asks[ticker][index] = asks[ticker][asks[ticker].length - 1];
+            asks[ticker][index] = asks[ticker][asks[ticker].length.sub(1)];
             asks[ticker].pop();
         }
     }
