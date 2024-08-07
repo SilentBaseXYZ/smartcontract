@@ -60,7 +60,7 @@ contract OrderBook is ReentrancyGuard {
     mapping(address => mapping(address => uint256)) public traderBalances;
     mapping(address => mapping(address => uint256)) public frozenBalances;
     mapping(string => Pair) public pairData;
-    mapping(string => Trade[]) public tradeData;
+    mapping(string => Trade[]) private tradeData;
     mapping(string => Order[]) public bids;
     mapping(string => Order[]) public asks;
 
@@ -153,7 +153,6 @@ contract OrderBook is ReentrancyGuard {
             destination_name = b.symbol();
         }
 
-    
         pairData[ticker] = Pair(source_name, destination_name, tokenA, tokenB, block.timestamp);
         if(!tickerExists[ticker]){
             listTicker.push(ticker);
@@ -220,11 +219,11 @@ contract OrderBook is ReentrancyGuard {
         address source_contract = pairData[ticker].source_contract;
         address destination_contract = pairData[ticker].destination_contract;
         if(side == Side.SELL){
-            frozenBalances[trader][source_contract] += quantity;
+            frozenBalances[trader][destination_contract] += quantity;
         } else {
             int128 price64x64 = ABDKMath64x64.fromUInt(price / 1 ether);
             uint256 totalCost = ABDKMath64x64.mulu(price64x64, (quantity / 1 ether)) * 1 ether;
-            frozenBalances[trader][destination_contract] += totalCost;
+            frozenBalances[trader][source_contract] += totalCost;
         }
     }
 
@@ -232,11 +231,11 @@ contract OrderBook is ReentrancyGuard {
         address source_contract = pairData[ticker].source_contract;
         address destination_contract = pairData[ticker].destination_contract;
         if(side == Side.SELL){
-            frozenBalances[trader][source_contract] -= quantity;
+            frozenBalances[trader][destination_contract] -= quantity;
         } else {
             int128 price64x64 = ABDKMath64x64.fromUInt(price / 1 ether);
             uint256 totalCost = ABDKMath64x64.mulu(price64x64, (quantity / 1 ether)) * 1 ether;
-            frozenBalances[trader][destination_contract] -= totalCost;
+            frozenBalances[trader][source_contract] -= totalCost;
         }
     }
 
@@ -432,6 +431,10 @@ contract OrderBook is ReentrancyGuard {
 
     function getAsks(string memory ticker) public view returns (Order[] memory) {
         return asks[ticker];
+    }
+
+    function tradeHistory(string memory ticker) external view returns (Trade[] memory) {
+        return tradeData[ticker];
     }
 
     function listTokens() external view returns (Token[] memory) {
