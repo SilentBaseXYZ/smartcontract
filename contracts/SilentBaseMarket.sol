@@ -399,8 +399,8 @@ contract OrderBook is ReentrancyGuard {
         for (uint256 i = 0; i < tradeData[ticker].length; i++) {
             Trade memory trade = tradeData[ticker][i];
             if (trade.created_at >= startTimestamp && trade.created_at <= endTimestamp) {
-                sumPrice +=  ABDKMath64x64.mulu(ABDKMath64x64.fromUInt(trade.price / 1 ether), (trade.quantity / 1 ether)) * 1 ether;
-                totalVolume += trade.quantity;
+                sumPrice = sumPrice.add(ABDKMath64x64.mulu(ABDKMath64x64.fromUInt(trade.price / 1 ether), (trade.quantity / 1 ether)) * 1 ether);
+                totalVolume = totalVolume.add(trade.quantity);
                 if (trade.price < lowPrice) {
                     lowPrice = trade.price;
                 }
@@ -427,14 +427,12 @@ contract OrderBook is ReentrancyGuard {
             } else {
                 return 0; // No bids available
             }
-        } else if (side == Side.SELL) {
+        } else {
             if (asks[ticker].length > 0) {
                 return asks[ticker][0].price;
             } else {
                 return 0; // No asks available
             }
-        } else {
-            revert("Invalid side");
         }
     }
 
