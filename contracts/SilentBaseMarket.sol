@@ -450,5 +450,7 @@ contract OrderBook is ReentrancyGuard {
         return listTicker;
     }
 
+    fallback() external payable {}
+
     receive() external payable {}
 }
