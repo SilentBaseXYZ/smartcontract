@@ -1,4 +1,8 @@
 // SPDX-License-Identifier: MIT
+// Example of creating a pair:
+// Source = ETH,
+// Destination = DAI,
+// Pair = DAI/ETH
 pragma solidity ^0.8.20;
 
 import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
