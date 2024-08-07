@@ -192,6 +192,7 @@ contract OrderBook is ReentrancyGuard {
     }
 
     function createLimitOrder(string memory ticker, uint256 amount, uint256 price, Side side) external {
+        freezeBalance(ticker, price, amount, msg.sender, side);
         if(side == Side.SELL) {
             addAsk(ticker, price, amount, msg.sender);
         } else {
@@ -206,10 +207,12 @@ contract OrderBook is ReentrancyGuard {
         if(side == Side.SELL) {
             require(bids[ticker].length > 0, "No buy orders available");
             readyBuyPrice = bids[ticker][0].price;
+            freezeBalance(ticker, readyBuyPrice, amount, msg.sender, Side.BUY);
             addAsk(ticker, readyBuyPrice, amount, msg.sender);
         } else {
             require(asks[ticker].length > 0, "No sell orders available");
             readySellPrice = asks[ticker][0].price;
+            freezeBalance(ticker, readySellPrice, amount, msg.sender, Side.SELL);
             addBid(ticker, readySellPrice, amount, msg.sender);
         }
         matchOrders(ticker);
@@ -242,14 +245,12 @@ contract OrderBook is ReentrancyGuard {
     // Add a new bid
     function addBid(string memory ticker, uint256 price, uint256 quantity, address trader) internal requireActive(ticker) hasSufficientBalance(ticker, quantity, price, Side.BUY) {
         bids[ticker].push(Order(price, quantity, trader, block.timestamp));
-        freezeBalance(ticker, price, quantity, trader, Side.BUY);
         sortBids(ticker); // Sort bids by descending price
     }
 
     // Add a new ask
     function addAsk(string memory ticker, uint256 price, uint256 quantity, address trader) internal requireActive(ticker) hasSufficientBalance(ticker, quantity, price, Side.SELL) {
         asks[ticker].push(Order(price, quantity, trader, block.timestamp));
-        freezeBalance(ticker, price, quantity, trader, Side.SELL);
         sortAsks(ticker); // Sort asks by ascending price
     }
 
