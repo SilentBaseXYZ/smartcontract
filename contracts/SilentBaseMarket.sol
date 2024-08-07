@@ -7,6 +7,7 @@ pragma solidity ^0.8.20;
 
 import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 import "./lib/ABDKMath64x64.sol";
+import "./lib/SafeMath.sol";
 
 interface IERC20 {
     event Transfer(address indexed from, address indexed to, uint256 value);
@@ -22,6 +23,7 @@ interface IERC20 {
 
 contract OrderBook is ReentrancyGuard {
     using ABDKMath64x64 for int128;
+    using SafeMath for uint256;
 
     enum Side {
         BUY,
@@ -115,7 +117,7 @@ contract OrderBook is ReentrancyGuard {
     }
 
     function removeFromInactive(string memory ticker) public onlyAdmin() {
-        uint index = _getInactiveIndex(ticker);
+        uint256 index = _getInactiveIndex(ticker);
         require(index < inActiveTicker.length, "Ticker not found in inactive list");
         inActiveTicker[index] = inActiveTicker[inActiveTicker.length - 1];
         inActiveTicker.pop();
@@ -123,7 +125,7 @@ contract OrderBook is ReentrancyGuard {
 
     function _isInactive(string memory ticker) internal view returns (bool) {
         uint256 length = inActiveTicker.length;
-        for (uint i = 0; i < length; i++) {
+        for (uint256 i = 0; i < length; i++) {
             if (keccak256(abi.encodePacked(inActiveTicker[i])) == keccak256(abi.encodePacked(ticker))) {
                 return true;
             }
@@ -133,7 +135,7 @@ contract OrderBook is ReentrancyGuard {
 
     function _getInactiveIndex(string memory ticker) internal view returns (uint) {
         uint256 length = inActiveTicker.length;
-        for (uint i = 0; i < length; i++) {
+        for (uint256 i = 0; i < length; i++) {
             if (keccak256(abi.encodePacked(inActiveTicker[i])) == keccak256(abi.encodePacked(ticker))) {
                 return i;
             }
@@ -172,7 +174,7 @@ contract OrderBook is ReentrancyGuard {
         }
     }
 
-    function deposit(uint amount, address tokenContract) external payable nonReentrant {
+    function deposit(uint256 amount, address tokenContract) external payable nonReentrant {
         if (tokenContract == address(0)) {
             require(msg.value == amount, "Incorrect Ether amount");
             traderBalances[msg.sender][tokenContract] += amount;
@@ -182,7 +184,7 @@ contract OrderBook is ReentrancyGuard {
         }
     }
     
-    function withdraw(uint amount, address tokenContract) external nonReentrant {
+    function withdraw(uint256 amount, address tokenContract) external nonReentrant {
         require(
             traderBalances[msg.sender][tokenContract] >= amount,
             'balance too low'
@@ -226,10 +228,12 @@ contract OrderBook is ReentrancyGuard {
         address source_contract = pairData[ticker].source_contract;
         address destination_contract = pairData[ticker].destination_contract;
         if(side == Side.SELL){
+    
             frozenBalances[trader][destination_contract] += quantity;
         } else {
             int128 price64x64 = ABDKMath64x64.fromUInt(price / 1 ether);
             uint256 totalCost = ABDKMath64x64.mulu(price64x64, (quantity / 1 ether)) * 1 ether;
+            
             frozenBalances[trader][source_contract] += totalCost;
         }
     }
@@ -260,8 +264,8 @@ contract OrderBook is ReentrancyGuard {
 
     // Sort bids in descending order
     function sortBids(string memory ticker) internal {
-        for (uint i = 0; i < bids[ticker].length; i++) {
-            for (uint j = i + 1; j < bids[ticker].length; j++) {
+        for (uint256 i = 0; i < bids[ticker].length; i++) {
+            for (uint256 j = i + 1; j < bids[ticker].length; j++) {
                 if (bids[ticker][i].price < bids[ticker][j].price) {
                     (bids[ticker][i], bids[ticker][j]) = (bids[ticker][j], bids[ticker][i]);
                 }
@@ -271,8 +275,8 @@ contract OrderBook is ReentrancyGuard {
 
     // Sort asks in ascending order
     function sortAsks(string memory ticker) internal {
-        for (uint i = 0; i < asks[ticker].length; i++) {
-            for (uint j = i + 1; j < asks[ticker].length; j++) {
+        for (uint256 i = 0; i < asks[ticker].length; i++) {
+            for (uint256 j = i + 1; j < asks[ticker].length; j++) {
                 if (asks[ticker][i].price > asks[ticker][j].price) {
                     (asks[ticker][i], asks[ticker][j]) = (asks[ticker][j], asks[ticker][i]);
                 }
@@ -334,7 +338,7 @@ contract OrderBook is ReentrancyGuard {
     // Remove bid at index
     function removeBid(string memory ticker, uint256 index) internal {
         require(index < bids[ticker].length, "Index out of bounds");
-        for (uint i = index; i < bids[ticker].length - 1; i++) {
+        for (uint256 i = index; i < bids[ticker].length - 1; i++) {
             bids[ticker][i] = bids[ticker][i + 1];
         }
         bids[ticker].pop();
@@ -343,14 +347,14 @@ contract OrderBook is ReentrancyGuard {
     // Remove ask at index
     function removeAsk(string memory ticker, uint256 index) internal {
         require(index < asks[ticker].length, "Index out of bounds");
-        for (uint i = index; i < asks[ticker].length - 1; i++) {
+        for (uint256 i = index; i < asks[ticker].length - 1; i++) {
             asks[ticker][i] = asks[ticker][i + 1];
         }
         asks[ticker].pop();
     }
 
     // Remove an order by index
-    function removeOrder(string memory ticker, Side side, uint index) internal {
+    function removeOrder(string memory ticker, Side side, uint256 index) internal {
         if (side == Side.BUY) {
             bids[ticker][index] = bids[ticker][bids[ticker].length - 1];
             bids[ticker].pop();
@@ -383,7 +387,7 @@ contract OrderBook is ReentrancyGuard {
         lowPrice = type(uint256).max;
         highPrice = 0;
 
-        for (uint i = 0; i < tradeData[ticker].length; i++) {
+        for (uint256 i = 0; i < tradeData[ticker].length; i++) {
             Trade memory trade = tradeData[ticker][i];
             if (trade.created_at >= startTimestamp && trade.created_at <= endTimestamp) {
                 sumPrice +=  ABDKMath64x64.mulu(ABDKMath64x64.fromUInt(trade.price / 1 ether), (trade.quantity / 1 ether)) * 1 ether;
