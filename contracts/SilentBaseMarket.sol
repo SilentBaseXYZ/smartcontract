@@ -80,28 +80,6 @@ contract OrderBook is ReentrancyGuard {
         _;
     }
 
-    modifier hasSufficientBalance(string memory ticker, uint256 amount, uint256 price, Side side) {
-        address source_contract = pairData[ticker].source_contract;
-        address destination_contract = pairData[ticker].destination_contract;
-        uint256 requiredAmount;
-
-        if (side == Side.BUY) {
-            int128 price64x64 = ABDKMath64x64.fromUInt(price / 1 ether);
-            requiredAmount = ABDKMath64x64.mulu(price64x64, (amount / 1 ether)) * 1 ether;
-            require(
-                traderBalances[msg.sender][source_contract] - frozenBalances[msg.sender][source_contract] >= requiredAmount,
-                "Insufficient balance for buy order"
-            );
-        } else { 
-            requiredAmount = amount;
-            require(
-                traderBalances[msg.sender][destination_contract] - frozenBalances[msg.sender][destination_contract] >= requiredAmount,
-                "Insufficient balance for sell order"
-            );
-        }
-        _;
-    }
-
 
     event OrderCreated(string ticker, uint256 price, uint256 quantity, Side side, address trader);
     event OrderCancelled(string ticker, uint256 price, uint256 quantity, Side side, address trader);
@@ -110,6 +88,30 @@ contract OrderBook is ReentrancyGuard {
     constructor() {
         admin = msg.sender;
     }
+
+    function hasSufficientBalance(string memory ticker, uint256 amount, uint256 price, Side side) internal view {
+        address source_contract = pairData[ticker].source_contract;
+        address destination_contract = pairData[ticker].destination_contract;
+        uint256 requiredAmount;
+
+        if (side == Side.BUY) {
+            // Convert price to 64.64 fixed point
+            int128 price64x64 = ABDKMath64x64.divu(price, 1 ether);
+            // Calculate requiredAmount in ether
+            requiredAmount = ABDKMath64x64.mulu(price64x64, amount);
+            require(
+                traderBalances[msg.sender][source_contract].sub(frozenBalances[msg.sender][source_contract]) >= requiredAmount,
+                "Insufficient balance for buy order"
+            );
+        } else { 
+            requiredAmount = amount;
+            require(
+                traderBalances[msg.sender][destination_contract].sub(frozenBalances[msg.sender][destination_contract]) >= requiredAmount,
+                "Insufficient balance for sell order"
+            );
+        }
+    }
+
 
     function addToInactive(string memory ticker) public onlyAdmin() {
         require(!_isInactive(ticker), "Ticker already inactive");
@@ -175,21 +177,25 @@ contract OrderBook is ReentrancyGuard {
     }
 
     function deposit(uint256 amount, address tokenContract) external payable nonReentrant {
+        uint256 tokenBalance = traderBalances[msg.sender][tokenContract];
+        uint256 frozenBalance = frozenBalances[msg.sender][tokenContract];
         if (tokenContract == address(0)) {
             require(msg.value == amount, "Incorrect Ether amount");
-            traderBalances[msg.sender][tokenContract] += amount;
+            traderBalances[msg.sender][tokenContract] = tokenBalance.add(amount);
+            frozenBalances[msg.sender][tokenContract] = frozenBalance.add(0);
         } else {
-            traderBalances[msg.sender][tokenContract] += amount;
+            traderBalances[msg.sender][tokenContract] += tokenBalance.add(amount);
+            frozenBalances[msg.sender][tokenContract] = frozenBalance.add(0);
             require(IERC20(tokenContract).transferFrom(msg.sender, address(this), amount), "Transfer failed");
         }
     }
     
     function withdraw(uint256 amount, address tokenContract) external nonReentrant {
         require(
-            traderBalances[msg.sender][tokenContract] >= amount,
+            (traderBalances[msg.sender][tokenContract].sub(frozenBalances[msg.sender][tokenContract])) >= amount,
             'balance too low'
         ); 
-        traderBalances[msg.sender][tokenContract] -= amount;
+        traderBalances[msg.sender][tokenContract] = traderBalances[msg.sender][tokenContract].sub(amount);
          if(tokenContract == address(0)){
             payable(msg.sender).transfer(amount);
         } else {
@@ -198,12 +204,13 @@ contract OrderBook is ReentrancyGuard {
     }
 
     function createLimitOrder(string memory ticker, uint256 amount, uint256 price, Side side) external {
-        freezeBalance(ticker, price, amount, msg.sender, side);
+        hasSufficientBalance(ticker, amount, price, side);
         if(side == Side.SELL) {
             addAsk(ticker, price, amount, msg.sender);
         } else {
             addBid(ticker, price, amount, msg.sender);
         }
+        freezeBalance(ticker, price, amount, msg.sender, side);
         emit OrderCreated(ticker, price, amount, side, msg.sender);
     }
 
@@ -213,13 +220,17 @@ contract OrderBook is ReentrancyGuard {
         if(side == Side.SELL) {
             require(bids[ticker].length > 0, "No buy orders available");
             readyBuyPrice = bids[ticker][0].price;
-            freezeBalance(ticker, readyBuyPrice, amount, msg.sender, Side.BUY);
+            hasSufficientBalance(ticker, amount, readyBuyPrice, side);
             addAsk(ticker, readyBuyPrice, amount, msg.sender);
+            freezeBalance(ticker, readyBuyPrice, amount, msg.sender, side);
+            emit OrderCreated(ticker, readyBuyPrice, amount, side, msg.sender);
         } else {
             require(asks[ticker].length > 0, "No sell orders available");
             readySellPrice = asks[ticker][0].price;
-            freezeBalance(ticker, readySellPrice, amount, msg.sender, Side.SELL);
+            hasSufficientBalance(ticker, amount, readySellPrice, side);
             addBid(ticker, readySellPrice, amount, msg.sender);
+            freezeBalance(ticker, readySellPrice, amount, msg.sender, Side.SELL);
+            emit OrderCreated(ticker, readySellPrice, amount, side, msg.sender);
         }
         matchOrders(ticker);
     }
@@ -228,13 +239,11 @@ contract OrderBook is ReentrancyGuard {
         address source_contract = pairData[ticker].source_contract;
         address destination_contract = pairData[ticker].destination_contract;
         if(side == Side.SELL){
-    
-            frozenBalances[trader][destination_contract] += quantity;
+            frozenBalances[trader][destination_contract] = frozenBalances[trader][destination_contract].add(quantity);
         } else {
             int128 price64x64 = ABDKMath64x64.fromUInt(price / 1 ether);
             uint256 totalCost = ABDKMath64x64.mulu(price64x64, (quantity / 1 ether)) * 1 ether;
-            
-            frozenBalances[trader][source_contract] += totalCost;
+            frozenBalances[trader][source_contract] = frozenBalances[trader][source_contract].add(totalCost);
         }
     }
 
@@ -242,22 +251,22 @@ contract OrderBook is ReentrancyGuard {
         address source_contract = pairData[ticker].source_contract;
         address destination_contract = pairData[ticker].destination_contract;
         if(side == Side.SELL){
-            frozenBalances[trader][destination_contract] -= quantity;
+            frozenBalances[trader][destination_contract] = frozenBalances[trader][destination_contract].sub(quantity);
         } else {
             int128 price64x64 = ABDKMath64x64.fromUInt(price / 1 ether);
             uint256 totalCost = ABDKMath64x64.mulu(price64x64, (quantity / 1 ether)) * 1 ether;
-            frozenBalances[trader][source_contract] -= totalCost;
+            frozenBalances[trader][source_contract] = frozenBalances[trader][source_contract].sub(totalCost);
         }
     }
 
     // Add a new bid
-    function addBid(string memory ticker, uint256 price, uint256 quantity, address trader) internal requireActive(ticker) hasSufficientBalance(ticker, quantity, price, Side.BUY) {
+    function addBid(string memory ticker, uint256 price, uint256 quantity, address trader) internal requireActive(ticker) {
         bids[ticker].push(Order(price, quantity, trader, block.timestamp));
         sortBids(ticker); // Sort bids by descending price
     }
 
     // Add a new ask
-    function addAsk(string memory ticker, uint256 price, uint256 quantity, address trader) internal requireActive(ticker) hasSufficientBalance(ticker, quantity, price, Side.SELL) {
+    function addAsk(string memory ticker, uint256 price, uint256 quantity, address trader) internal requireActive(ticker) {
         asks[ticker].push(Order(price, quantity, trader, block.timestamp));
         sortAsks(ticker); // Sort asks by ascending price
     }
@@ -298,8 +307,8 @@ contract OrderBook is ReentrancyGuard {
                 tradeData[ticker].push(Trade(lowestAsk.price, tradeQuantity, block.timestamp));
 
                 // Update quantities
-                highestBid.quantity -= tradeQuantity;
-                lowestAsk.quantity -= tradeQuantity;
+                highestBid.quantity = highestBid.quantity.sub(tradeQuantity);
+                lowestAsk.quantity = lowestAsk.quantity.sub(tradeQuantity);
 
                 // Update trader balances
                 updateTraderBalances(ticker, highestBid.trader, lowestAsk.trader, lowestAsk.price, tradeQuantity);
@@ -375,10 +384,10 @@ contract OrderBook is ReentrancyGuard {
         uint256 totalDestinationAmount = quantity;
         int128 price64x64 = ABDKMath64x64.fromUInt(price / 1 ether);
         uint256 totalSourceAmount = ABDKMath64x64.mulu(price64x64, (quantity / 1 ether)) * 1 ether;
-        traderBalances[buyer][source_contract] -= totalSourceAmount;
-        traderBalances[buyer][destination_contract] += totalDestinationAmount;
-        traderBalances[buyer][source_contract] += totalSourceAmount;
-        traderBalances[seller][destination_contract] -= totalDestinationAmount;
+        traderBalances[buyer][source_contract] = traderBalances[buyer][source_contract].sub(totalSourceAmount);
+        traderBalances[buyer][destination_contract] = traderBalances[buyer][destination_contract].add(totalDestinationAmount);
+        traderBalances[seller][source_contract] = traderBalances[seller][source_contract].add(totalSourceAmount);
+        traderBalances[seller][destination_contract] = traderBalances[seller][destination_contract].sub(totalDestinationAmount);
     }
 
     function getTradeStats(string memory ticker, uint256 startTimestamp, uint256 endTimestamp) public view returns (uint256 averagePrice, uint256 totalVolume, uint256 lowPrice, uint256 highPrice) {
@@ -431,7 +440,7 @@ contract OrderBook is ReentrancyGuard {
 
     function lastPrice(string memory ticker) external view requireActive(ticker) returns (uint256) {
         require(tradeData[ticker].length > 0, "No trades found for ticker");
-        return tradeData[ticker][tradeData[ticker].length - 1].price;
+        return tradeData[ticker][tradeData[ticker].length.sub(1)].price;
     }
 
     function getBids(string memory ticker) public view returns (Order[] memory) {
