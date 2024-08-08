@@ -388,6 +388,8 @@ contract OrderBook is ReentrancyGuard {
         uint256 count = 0;
         lowPrice = type(uint256).max;
         highPrice = 0;
+        totalVolume = 0;
+        averagePrice = 0;
 
         for (uint256 i = 0; i < tradeData[ticker].length; i++) {
             Trade memory trade = tradeData[ticker][i];
