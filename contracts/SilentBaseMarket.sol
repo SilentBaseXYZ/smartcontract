@@ -6,7 +6,6 @@
 pragma solidity ^0.8.20;
 
 import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
-import "./lib/ABDKMath64x64.sol";
 import "./lib/SafeMath.sol";
 
 interface IERC20 {
@@ -22,7 +21,6 @@ interface IERC20 {
 }
 
 contract OrderBook is ReentrancyGuard {
-    using ABDKMath64x64 for int128;
     using SafeMath for uint256;
 
     enum Side {
@@ -83,7 +81,7 @@ contract OrderBook is ReentrancyGuard {
 
     event OrderCreated(string ticker, uint256 price, uint256 quantity, Side side, address trader);
     event OrderCancelled(string ticker, uint256 price, uint256 quantity, Side side, address trader);
-    event TradeExecuted(uint256 price, uint256 quantity);
+    event TradeExecuted(uint256 price, uint256 quantity, uint256 created_at);
 
     constructor() {
         admin = msg.sender;
@@ -95,10 +93,7 @@ contract OrderBook is ReentrancyGuard {
         uint256 requiredAmount;
 
         if (side == Side.BUY) {
-            // Convert price to 64.64 fixed point
-            int128 price64x64 = ABDKMath64x64.divu(price, 1 ether);
-            // Calculate requiredAmount in ether
-            requiredAmount = ABDKMath64x64.mulu(price64x64, amount);
+            requiredAmount = price.mul(amount);
             require(
                 traderBalances[msg.sender][source_contract].sub(frozenBalances[msg.sender][source_contract]) >= requiredAmount,
                 "Insufficient balance for buy order"
@@ -204,14 +199,17 @@ contract OrderBook is ReentrancyGuard {
     }
 
     function createLimitOrder(string memory ticker, uint256 amount, uint256 price, Side side) external {
-        hasSufficientBalance(ticker, amount, price, side);
         if(side == Side.SELL) {
+            hasSufficientBalance(ticker, amount, price, side);
             addAsk(ticker, price, amount, msg.sender);
+            freezeBalance(ticker, price, amount, msg.sender, side);
+            emit OrderCreated(ticker, price, amount, side, msg.sender);
         } else {
+            hasSufficientBalance(ticker, amount, price, side);
             addBid(ticker, price, amount, msg.sender);
-        }
-        freezeBalance(ticker, price, amount, msg.sender, side);
-        emit OrderCreated(ticker, price, amount, side, msg.sender);
+            freezeBalance(ticker, price, amount, msg.sender, side);
+            emit OrderCreated(ticker, price, amount, side, msg.sender);
+        } 
     }
 
     function createMarketOrder(string memory ticker, uint256 amount, Side side) external {
@@ -229,7 +227,7 @@ contract OrderBook is ReentrancyGuard {
             readySellPrice = asks[ticker][0].price;
             hasSufficientBalance(ticker, amount, readySellPrice, side);
             addBid(ticker, readySellPrice, amount, msg.sender);
-            freezeBalance(ticker, readySellPrice, amount, msg.sender, Side.SELL);
+            freezeBalance(ticker, readySellPrice, amount, msg.sender, side);
             emit OrderCreated(ticker, readySellPrice, amount, side, msg.sender);
         }
         matchOrders(ticker);
@@ -241,9 +239,7 @@ contract OrderBook is ReentrancyGuard {
         if(side == Side.SELL){
             frozenBalances[trader][destination_contract] = frozenBalances[trader][destination_contract].add(quantity);
         } else {
-            int128 price64x64 = ABDKMath64x64.fromUInt(price / 1 ether);
-            uint256 totalCost = ABDKMath64x64.mulu(price64x64, (quantity / 1 ether)) * 1 ether;
-            frozenBalances[trader][source_contract] = frozenBalances[trader][source_contract].add(totalCost);
+            frozenBalances[trader][source_contract] = frozenBalances[trader][source_contract].add((price / 1 ether) * quantity );
         }
     }
 
@@ -253,9 +249,7 @@ contract OrderBook is ReentrancyGuard {
         if(side == Side.SELL){
             frozenBalances[trader][destination_contract] = frozenBalances[trader][destination_contract].sub(quantity);
         } else {
-            int128 price64x64 = ABDKMath64x64.fromUInt(price / 1 ether);
-            uint256 totalCost = ABDKMath64x64.mulu(price64x64, (quantity / 1 ether)) * 1 ether;
-            frozenBalances[trader][source_contract] = frozenBalances[trader][source_contract].sub(totalCost);
+            frozenBalances[trader][source_contract] = frozenBalances[trader][source_contract].sub((price / 1 ether) * quantity);
         }
     }
 
@@ -303,7 +297,7 @@ contract OrderBook is ReentrancyGuard {
                 uint256 tradeQuantity = min(highestBid.quantity, lowestAsk.quantity);
 
                 // Emit trade event
-                emit TradeExecuted(lowestAsk.price, tradeQuantity);
+                emit TradeExecuted(lowestAsk.price, tradeQuantity, block.timestamp);
                 tradeData[ticker].push(Trade(lowestAsk.price, tradeQuantity, block.timestamp));
 
                 // Update quantities
@@ -382,8 +376,7 @@ contract OrderBook is ReentrancyGuard {
         address source_contract = pairData[ticker].source_contract;
         address destination_contract = pairData[ticker].destination_contract;
         uint256 totalDestinationAmount = quantity;
-        int128 price64x64 = ABDKMath64x64.fromUInt(price / 1 ether);
-        uint256 totalSourceAmount = ABDKMath64x64.mulu(price64x64, (quantity / 1 ether)) * 1 ether;
+        uint256 totalSourceAmount = price.mul(quantity);
         traderBalances[buyer][source_contract] = traderBalances[buyer][source_contract].sub(totalSourceAmount);
         traderBalances[buyer][destination_contract] = traderBalances[buyer][destination_contract].add(totalDestinationAmount);
         traderBalances[seller][source_contract] = traderBalances[seller][source_contract].add(totalSourceAmount);
@@ -399,7 +392,7 @@ contract OrderBook is ReentrancyGuard {
         for (uint256 i = 0; i < tradeData[ticker].length; i++) {
             Trade memory trade = tradeData[ticker][i];
             if (trade.created_at >= startTimestamp && trade.created_at <= endTimestamp) {
-                sumPrice = sumPrice.add(ABDKMath64x64.mulu(ABDKMath64x64.fromUInt(trade.price / 1 ether), (trade.quantity / 1 ether)) * 1 ether);
+                sumPrice = sumPrice.add(trade.price.mul(trade.quantity));
                 totalVolume = totalVolume.add(trade.quantity);
                 if (trade.price < lowPrice) {
                     lowPrice = trade.price;
