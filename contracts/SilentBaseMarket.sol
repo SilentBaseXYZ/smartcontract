@@ -87,7 +87,12 @@ contract OrderBook is ReentrancyGuard {
         admin = msg.sender;
     }
 
-    function hasSufficientBalance(string memory ticker, uint256 amount, uint256 price, Side side) internal view {
+    function _checkNotZero(uint256 result) internal pure returns (bool) {
+        require(result != 0, "Result must not be zero");
+        return true;
+    }
+
+    function _hasSufficientBalance(string memory ticker, uint256 amount, uint256 price, Side side) internal view {
         address source_contract = pairData[ticker].source_contract;
         address destination_contract = pairData[ticker].destination_contract;
         uint256 requiredAmount;
@@ -200,12 +205,14 @@ contract OrderBook is ReentrancyGuard {
 
     function createLimitOrder(string memory ticker, uint256 amount, uint256 price, Side side) external {
         if(side == Side.SELL) {
-            hasSufficientBalance(ticker, amount, price, side);
+            _checkNotZero(price.mul(amount));
+            _hasSufficientBalance(ticker, amount, price, side);
             addAsk(ticker, price, amount, msg.sender);
             freezeBalance(ticker, price, amount, msg.sender, side);
             emit OrderCreated(ticker, price, amount, side, msg.sender);
         } else {
-            hasSufficientBalance(ticker, amount, price, side);
+            _checkNotZero(price.mul(amount));
+            _hasSufficientBalance(ticker, amount, price, side);
             addBid(ticker, price, amount, msg.sender);
             freezeBalance(ticker, price, amount, msg.sender, side);
             emit OrderCreated(ticker, price, amount, side, msg.sender);
@@ -218,14 +225,16 @@ contract OrderBook is ReentrancyGuard {
         if(side == Side.SELL) {
             require(bids[ticker].length > 0, "No buy orders available");
             readyBuyPrice = bids[ticker][0].price;
-            hasSufficientBalance(ticker, amount, readyBuyPrice, side);
+            _checkNotZero(readyBuyPrice.mul(amount));
+            _hasSufficientBalance(ticker, amount, readyBuyPrice, side);
             addAsk(ticker, readyBuyPrice, amount, msg.sender);
             freezeBalance(ticker, readyBuyPrice, amount, msg.sender, side);
             emit OrderCreated(ticker, readyBuyPrice, amount, side, msg.sender);
         } else {
             require(asks[ticker].length > 0, "No sell orders available");
             readySellPrice = asks[ticker][0].price;
-            hasSufficientBalance(ticker, amount, readySellPrice, side);
+            _checkNotZero(readySellPrice.mul(amount));
+            _hasSufficientBalance(ticker, amount, readySellPrice, side);
             addBid(ticker, readySellPrice, amount, msg.sender);
             freezeBalance(ticker, readySellPrice, amount, msg.sender, side);
             emit OrderCreated(ticker, readySellPrice, amount, side, msg.sender);
