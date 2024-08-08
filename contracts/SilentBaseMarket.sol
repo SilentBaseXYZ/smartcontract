@@ -431,6 +431,10 @@ contract OrderBook is ReentrancyGuard {
         }
     }
 
+    function clearTradeData(string memory ticker) public onlyAdmin {
+        delete tradeData[ticker];
+    }
+
     function lastPrice(string memory ticker) external view requireActive(ticker) returns (uint256) {
         require(tradeData[ticker].length > 0, "No trades found for ticker");
         return tradeData[ticker][tradeData[ticker].length.sub(1)].price;
