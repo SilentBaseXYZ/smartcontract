@@ -68,6 +68,9 @@ contract OrderBook is ReentrancyGuard {
     mapping(string => Order[]) public bids;
     mapping(string => Order[]) public asks;
 
+    mapping(address => address) public referralAddresses;
+    mapping(address => bool) public referralSet;
+
     modifier onlyAdmin() {
         require(msg.sender == admin, 'only admin');
         _;
@@ -78,10 +81,16 @@ contract OrderBook is ReentrancyGuard {
         _;
     }
 
+    modifier hasReferral() {
+        require(referralSet[msg.sender], "Referral address not set");
+        _;
+    }
+
 
     event OrderCreated(string ticker, uint256 price, uint256 quantity, Side side, address trader);
     event OrderCancelled(string ticker, uint256 price, uint256 quantity, Side side, address trader);
     event TradeExecuted(uint256 price, uint256 quantity, uint256 created_at);
+    event ReferralAddressSet(address indexed user, address indexed referral);
 
     constructor() {
         admin = msg.sender;
@@ -110,6 +119,14 @@ contract OrderBook is ReentrancyGuard {
                 "Insufficient balance for sell order"
             );
         }
+    }
+
+    function setReferralAddress(address referral) external {
+        require(!referralSet[msg.sender], "Referral address already set");
+        require(referral != msg.sender, "Cannot set self as referral");
+        referralAddresses[msg.sender] = referral;
+        referralSet[msg.sender] = true;
+        emit ReferralAddressSet(msg.sender, referral);
     }
 
 
@@ -203,7 +220,9 @@ contract OrderBook is ReentrancyGuard {
         }
     }
 
-    function createLimitOrder(string memory ticker, uint256 amount, uint256 price, Side side) external {
+    function createLimitOrder(string memory ticker, uint256 amount, uint256 price, Side side) external hasReferral {
+        require(amount > 0, "Order quantity must be greater than zero");
+        require(price > 0, "Price must be greater than zero");
         if(side == Side.SELL) {
             _checkNotZero(price.mul(amount));
             _hasSufficientBalance(ticker, amount, price, side);
@@ -219,7 +238,8 @@ contract OrderBook is ReentrancyGuard {
         } 
     }
 
-    function createMarketOrder(string memory ticker, uint256 amount, Side side) external {
+    function createMarketOrder(string memory ticker, uint256 amount, Side side) external hasReferral {
+        require(amount > 0, "Order quantity must be greater than zero");
         uint256 readyBuyPrice;
         uint256 readySellPrice;
         if(side == Side.SELL) {
@@ -382,14 +402,26 @@ contract OrderBook is ReentrancyGuard {
     }
 
     function updateTraderBalances(string memory ticker, address buyer, address seller, uint256 price, uint256 quantity) internal {
+        address refererBuyer = referralAddresses[buyer];
+        address refererSeller = referralAddresses[seller];
         address source_contract = pairData[ticker].source_contract;
         address destination_contract = pairData[ticker].destination_contract;
         uint256 totalDestinationAmount = quantity;
         uint256 totalSourceAmount = price.mul(quantity);
         traderBalances[buyer][source_contract] = traderBalances[buyer][source_contract].sub(totalSourceAmount);
         traderBalances[buyer][destination_contract] = traderBalances[buyer][destination_contract].add(totalDestinationAmount);
+       
+        uint256 feeBuyer = traderBalances[buyer][destination_contract].sub(totalDestinationAmount / 1000);
+        traderBalances[buyer][destination_contract] = traderBalances[buyer][destination_contract].sub(feeBuyer);
+        traderBalances[refererBuyer][destination_contract] = traderBalances[refererBuyer][destination_contract].add(feeBuyer);
+       
         traderBalances[seller][source_contract] = traderBalances[seller][source_contract].add(totalSourceAmount);
         traderBalances[seller][destination_contract] = traderBalances[seller][destination_contract].sub(totalDestinationAmount);
+
+        uint256 feeSeller = traderBalances[seller][source_contract].sub(totalSourceAmount / 1000);
+        traderBalances[seller][source_contract] = traderBalances[seller][source_contract].sub(feeSeller);
+        traderBalances[refererSeller][source_contract] = traderBalances[refererSeller][source_contract].add(feeSeller);
+
     }
 
     function getTradeStats(string memory ticker, uint256 startTimestamp, uint256 endTimestamp) public view returns (uint256 averagePrice, uint256 totalVolume, uint256 lowPrice, uint256 highPrice) {
