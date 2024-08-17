@@ -215,9 +215,9 @@ contract OrderBook is ReentrancyGuard {
         }
     }
 
-    function createLimitOrder(string memory ticker, uint256 amount, uint256 price, Side side) external hasReferral {
-        require(amount > 0, "Order quantity must be greater than zero");
-        require(price > 0, "Price must be greater than zero");
+    function createLimitOrder(string memory ticker, uint256 amount, uint256 price, Side side) external hasReferral nonReentrant {
+        require(amount > 1000000000, "Order quantity must be greater than 1 Gwei");
+        require(price > 1000000000, "Price must be greater than  1 Gwei");
         if(side == Side.SELL) {
             _hasSufficientBalance(ticker, amount, price, side);
             addAsk(ticker, price, amount, msg.sender);
@@ -231,8 +231,8 @@ contract OrderBook is ReentrancyGuard {
         } 
     }
 
-    function createMarketOrder(string memory ticker, uint256 amount, Side side) external hasReferral {
-        require(amount > 0, "Order quantity must be greater than zero");
+    function createMarketOrder(string memory ticker, uint256 amount, Side side) external hasReferral nonReentrant {
+        require(amount > 1000000000, "Order quantity must be greater than 1 Gwei");
         if(side == Side.SELL) {
             require(bids[ticker].length > 0, "No buy orders available");
             for(uint256 i = 0; i < bids[ticker].length && amount > 0; i++) {
