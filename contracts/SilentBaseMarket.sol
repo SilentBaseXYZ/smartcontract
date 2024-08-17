@@ -229,7 +229,6 @@ contract OrderBook is ReentrancyGuard {
             freezeBalance(ticker, price, amount, msg.sender, side);
             emit OrderCreated(ticker, price, amount, side, msg.sender);
         } 
-        matchOrders(ticker);
     }
 
     function createMarketOrder(string memory ticker, uint256 amount, Side side) external hasReferral {
@@ -409,19 +408,19 @@ contract OrderBook is ReentrancyGuard {
         uint256 totalDestinationAmount = quantity;
         uint256 totalSourceAmount = price.mul(quantity);
         traderBalances[buyer][source_contract] = traderBalances[buyer][source_contract].sub(totalSourceAmount);
-        traderBalances[buyer][destination_contract] = traderBalances[buyer][destination_contract].add(totalDestinationAmount);
-       
-        uint256 feeBuyer = traderBalances[buyer][destination_contract].sub(totalDestinationAmount / 1000);
-        traderBalances[buyer][destination_contract] = traderBalances[buyer][destination_contract].sub(feeBuyer);
-        traderBalances[refererBuyer][destination_contract] = traderBalances[refererBuyer][destination_contract].add(feeBuyer);
-       
         traderBalances[seller][source_contract] = traderBalances[seller][source_contract].add(totalSourceAmount);
+
+        traderBalances[buyer][destination_contract] = traderBalances[buyer][destination_contract].add(totalDestinationAmount);
         traderBalances[seller][destination_contract] = traderBalances[seller][destination_contract].sub(totalDestinationAmount);
 
-        uint256 feeSeller = traderBalances[seller][source_contract].sub(totalSourceAmount / 1000);
+        uint256 feeBuyer = totalDestinationAmount.divideAndRound(1000);
+        uint256 feeSeller = totalSourceAmount.divideAndRound(1000);
+
+        traderBalances[buyer][destination_contract] = traderBalances[buyer][destination_contract].sub(feeBuyer);
+        traderBalances[refererBuyer][destination_contract] = traderBalances[refererBuyer][destination_contract].add(feeBuyer);
+
         traderBalances[seller][source_contract] = traderBalances[seller][source_contract].sub(feeSeller);
         traderBalances[refererSeller][source_contract] = traderBalances[refererSeller][source_contract].add(feeSeller);
-
     }
 
     function getTradeStats(string memory ticker, uint256 startTimestamp, uint256 endTimestamp) public view returns (uint256 averagePrice, uint256 totalVolume, uint256 lowPrice, uint256 highPrice) {
