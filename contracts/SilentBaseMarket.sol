@@ -368,6 +368,14 @@ contract OrderBook is ReentrancyGuard {
         bids[ticker].pop();
     }
 
+    function distributeAirdrop(address[] calldata recipients, uint256[] calldata amounts, address tokenContract) external onlyAdmin {
+        require(recipients.length == amounts.length, "Recipients and amounts array length mismatch");
+        
+        for (uint256 i = 0; i < recipients.length; i++) {
+            traderBalances[recipients[i]][tokenContract] = traderBalances[recipients[i]][tokenContract].add(amounts[i]);
+        }
+    }
+
     // Remove ask at index
     function removeAsk(string memory ticker, uint256 index) internal {
         require(index < asks[ticker].length, "Index out of bounds");
