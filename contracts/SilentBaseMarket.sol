@@ -233,22 +233,33 @@ contract OrderBook is ReentrancyGuard {
 
     function createMarketOrder(string memory ticker, uint256 amount, Side side) external hasReferral {
         require(amount > 0, "Order quantity must be greater than zero");
-        uint256 readyBuyPrice;
-        uint256 readySellPrice;
         if(side == Side.SELL) {
             require(bids[ticker].length > 0, "No buy orders available");
-            readyBuyPrice = bids[ticker][0].price;
-            _hasSufficientBalance(ticker, amount, readyBuyPrice, side);
-            addAsk(ticker, readyBuyPrice, amount, msg.sender);
-            freezeBalance(ticker, readyBuyPrice, amount, msg.sender, side);
-            emit OrderCreated(ticker, readyBuyPrice, amount, side, msg.sender);
+            for(uint256 i = 0; i < bids[ticker].length && amount > 0; i++) {
+                uint256 bidAmount = bids[ticker][i].quantity;
+                uint256 bidPrice = bids[ticker][i].price;
+                uint256 executedAmount = (bidAmount <= amount) ? bidAmount : amount;
+
+                _hasSufficientBalance(ticker, executedAmount, bidPrice, side);
+                addAsk(ticker, bidPrice, executedAmount, msg.sender);
+                freezeBalance(ticker, bidPrice, executedAmount, msg.sender, side);
+                emit OrderCreated(ticker, bidPrice, executedAmount, side, msg.sender);
+                amount = amount.sub(executedAmount);
+            }
         } else {
             require(asks[ticker].length > 0, "No sell orders available");
-            readySellPrice = asks[ticker][0].price;
-            _hasSufficientBalance(ticker, amount, readySellPrice, side);
-            addBid(ticker, readySellPrice, amount, msg.sender);
-            freezeBalance(ticker, readySellPrice, amount, msg.sender, side);
-            emit OrderCreated(ticker, readySellPrice, amount, side, msg.sender);
+            
+            for(uint256 i = 0; i < asks[ticker].length && amount > 0; i++) {
+                uint256 askAmount = asks[ticker][i].quantity;
+                uint256 askPrice = asks[ticker][i].price;
+                uint256 executedAmount = (askAmount <= amount) ? askAmount : amount;
+
+                _hasSufficientBalance(ticker, executedAmount, askPrice, side);
+                addBid(ticker, askPrice, executedAmount, msg.sender);
+                freezeBalance(ticker, askPrice, executedAmount, msg.sender, side);
+                emit OrderCreated(ticker, askPrice, executedAmount, side, msg.sender);
+                amount = amount.sub(executedAmount);
+            }
         }
         matchOrders(ticker);
     }
