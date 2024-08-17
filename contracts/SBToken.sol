@@ -297,7 +297,7 @@ contract SBToken is ERC20, ReentrancyGuard {
                 target_chainID,
                 sourceContract,
                 targetContract,
-                tokenSymbol, // Menggunakan 'tokenSymbol' di sini
+                tokenSymbol,
                 decimal,
                 amount,
                 signAt
