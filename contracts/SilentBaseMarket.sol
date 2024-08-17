@@ -96,11 +96,6 @@ contract OrderBook is ReentrancyGuard {
         admin = msg.sender;
     }
 
-    function _checkNotZero(uint256 result) internal pure returns (bool) {
-        require(result != 0, "Result must not be zero");
-        return true;
-    }
-
     function _hasSufficientBalance(string memory ticker, uint256 amount, uint256 price, Side side) internal view {
         address source_contract = pairData[ticker].source_contract;
         address destination_contract = pairData[ticker].destination_contract;
@@ -224,18 +219,17 @@ contract OrderBook is ReentrancyGuard {
         require(amount > 0, "Order quantity must be greater than zero");
         require(price > 0, "Price must be greater than zero");
         if(side == Side.SELL) {
-            _checkNotZero(price.mul(amount));
             _hasSufficientBalance(ticker, amount, price, side);
             addAsk(ticker, price, amount, msg.sender);
             freezeBalance(ticker, price, amount, msg.sender, side);
             emit OrderCreated(ticker, price, amount, side, msg.sender);
         } else {
-            _checkNotZero(price.mul(amount));
             _hasSufficientBalance(ticker, amount, price, side);
             addBid(ticker, price, amount, msg.sender);
             freezeBalance(ticker, price, amount, msg.sender, side);
             emit OrderCreated(ticker, price, amount, side, msg.sender);
         } 
+        matchOrders(ticker);
     }
 
     function createMarketOrder(string memory ticker, uint256 amount, Side side) external hasReferral {
@@ -245,7 +239,6 @@ contract OrderBook is ReentrancyGuard {
         if(side == Side.SELL) {
             require(bids[ticker].length > 0, "No buy orders available");
             readyBuyPrice = bids[ticker][0].price;
-            _checkNotZero(readyBuyPrice.mul(amount));
             _hasSufficientBalance(ticker, amount, readyBuyPrice, side);
             addAsk(ticker, readyBuyPrice, amount, msg.sender);
             freezeBalance(ticker, readyBuyPrice, amount, msg.sender, side);
@@ -253,7 +246,6 @@ contract OrderBook is ReentrancyGuard {
         } else {
             require(asks[ticker].length > 0, "No sell orders available");
             readySellPrice = asks[ticker][0].price;
-            _checkNotZero(readySellPrice.mul(amount));
             _hasSufficientBalance(ticker, amount, readySellPrice, side);
             addBid(ticker, readySellPrice, amount, msg.sender);
             freezeBalance(ticker, readySellPrice, amount, msg.sender, side);
