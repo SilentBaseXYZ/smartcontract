@@ -6,7 +6,6 @@
 pragma solidity ^0.8.20;
 
 import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
-import "./lib/SafeMath.sol";
 
 interface IERC20 {
     event Transfer(address indexed from, address indexed to, uint256 value);
@@ -20,8 +19,29 @@ interface IERC20 {
     function transferFrom(address from, address to, uint256 value) external returns (bool);
 }
 
+library SBTSafeMath {
+    function add(uint256 a, uint256 b) internal pure returns (uint256) {
+        uint256 result = a + b;
+        require(result >= a, "Addition overflow"); 
+        return result;
+    }
+    function sub(uint256 a, uint256 b) internal pure returns (uint256) {
+        require(b <= a, "Subtraction underflow"); 
+        return a - b;
+    }
+
+    function mul(uint256 price, uint256 quantity) internal pure returns (uint256) {
+        uint256 result = divideAndRound((price * quantity), 1 ether);
+        return result;
+    }
+
+    function divideAndRound(uint256 a, uint256 b) internal  pure returns (uint256) {
+        return (a + (b / 2)) / b;
+    }
+}
+
 contract OrderBook is ReentrancyGuard {
-    using SafeMath for uint256;
+    using SBTSafeMath for uint256;
 
     enum Side {
         BUY,
