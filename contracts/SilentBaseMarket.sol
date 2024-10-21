@@ -345,9 +345,11 @@ contract OrderBook is ReentrancyGuard {
                 // Remove fully filled orders
                 if (highestBid.quantity == 0) {
                     removeBid(ticker, 0);
+                    sortBids(ticker);
                 }
                 if (lowestAsk.quantity == 0) {
                     removeAsk(ticker, 0);
+                    sortAsks(ticker);   
                 }
             } else {
                 break; // No more matching possible
